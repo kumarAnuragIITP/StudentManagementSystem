@@ -1,18 +1,3 @@
-"""
-Student Management System — Modern Login & Registration Portal
-Government Polytechnic Ranchi
-Python 3.10+
-Optional packages:
-    pip install pillow pymongo
-
-Run:
-    python main.py
-
-MongoDB:
-    mongodb://localhost:27017
-If MongoDB is unavailable, the app safely uses temporary in-memory storage.
-"""
-
 import io
 import os
 import re
@@ -55,7 +40,7 @@ USERS_COLLECTION = "users"
 #         LOGO_PATH = r"C:\college\gpr_logo.jpg"
 #         LOGO_PATH = "https://your-site.edu/logo.png"
 #     Leave blank ("") to keep the built-in ✦ mark.
-LOGO_PATH = "C:\\Users\\kanur\\PycharmProjects\\VWSP\\PythonProject\\student_photos\\Gp_chapra_copy.png"
+LOGO_PATH = "C:\\Users\\kanur\\PycharmProjects\\VWSP\\PythonProject\\images\\gpc.png"
 
 # A single student/campus-themed photograph. If internet/Pillow is unavailable,
 # the app uses ONLY the gradient fallback (never both backgrounds together).
@@ -978,15 +963,34 @@ class StudentPortal(tk.Tk):
         self.destroy()
 
 
+
 def main():
     try:
+        # STEP 1: Import splash screen
+        from splash_screen import splash_screen
+
+        # STEP 2: Create splash window
+        splash_root = tk.Tk()
+
+        # STEP 3: Display splash screen
+        splash_screen(splash_root)
+
+        # STEP 4: Wait until splash screen closes
+        splash_root.mainloop()
+
+        # STEP 5: Launch the actual student management application
         app = StudentPortal()
         app.mainloop()
+
     except Exception:
         details = traceback.format_exc()
         print(details)
+
         try:
-            messagebox.showerror("Application error", details[-1800:])
+            messagebox.showerror(
+                "Application error",
+                details[-1800:]
+            )
         except Exception:
             pass
 

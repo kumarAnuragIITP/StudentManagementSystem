@@ -1,91 +1,231 @@
+
 import tkinter as tk
-import time
-import threading
-import subprocess
-import sys
 import os
-from PIL import Image, ImageTk
+
+try:
+    from PIL import Image, ImageTk, ImageOps
+    PIL_OK = True
+except ImportError:
+    PIL_OK = False
+
 
 def splash_screen(root):
-    root.title("Welcome to Student Management System")
-    root.geometry("800x600")
-    root.configure(bg="white")
 
-    # Center window
+    root.title("Welcome to Student Management System")
+    root.geometry("1000x650")
+    root.resizable(False, False)
+    root.configure(bg="#FFFFFF")
+
+    # Center splash window
     root.update_idletasks()
-    width = root.winfo_width()
-    height = root.winfo_height()
-    x = (root.winfo_screenwidth() // 2) - (width // 2)
-    y = (root.winfo_screenheight() // 2) - (height // 2)
+
+    width = 1000
+    height = 650
+
+    x = (root.winfo_screenwidth() - width) // 2
+    y = (root.winfo_screenheight() - height) // 2
+
     root.geometry(f"{width}x{height}+{x}+{y}")
 
-    # Image paths
-    image_path1 = r"C:\Users\kanur\PycharmProjects\PythonProject\student_photos\sbte_logo.png"
-    image_path2 = r"C:\Users\kanur\PycharmProjects\PythonProject\student_photos\Gp_chapra_copy.png"
-    bg_image_path = r"C:\Users\kanur\PycharmProjects\PythonProject\student_photos\a.jpg"
+    # Always use the folder containing this Python file
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    photo_dir = os.path.join(base_dir, "images")
 
-    # LEFT FRAME
-    left_frame = tk.Frame(root, bg="#1e90ff", width=300)
+    image_path1 = os.path.join(photo_dir, "gpc.png")
+    image_path2 = os.path.join(photo_dir, "sbte.png")
+    bg_image_path = os.path.join(photo_dir, "a.jpg")
+
+    # Keep image references alive
+    root.image_references = []
+
+    # ---------------- LEFT PANEL ----------------
+
+    left_frame = tk.Frame(
+        root,
+        bg="#1769AA",
+        width=280
+    )
+
     left_frame.pack(side="left", fill="y")
     left_frame.pack_propagate(False)
 
-    tk.Label(left_frame, text="State Board\nOf Technical\n Education, Bihar",
-             font=("Arial", 17, "bold"), bg="#1e90ff", fg="white", justify="center").pack(pady=10)
+    tk.Label(
+        left_frame,
+        text="STATE BOARD\nOF TECHNICAL\nEDUCATION, BIHAR",
+        font=("Arial", 17, "bold"),
+        bg="#1769AA",
+        fg="white",
+        justify="center"
+    ).pack(pady=(35, 15))
 
-    try:
-        img1 = Image.open(image_path1).resize((220, 220), Image.Resampling.LANCZOS)
-        tk_img1 = ImageTk.PhotoImage(img1)
-        tk.Label(left_frame, image=tk_img1, bg="#1e90ff").pack(pady=30)
-    except Exception as e:
-        print("Error loading left image:", e)
+    # SBTE logo
+    if PIL_OK:
+        try:
+            img1 = Image.open(image_path1).convert("RGBA")
+            img1.thumbnail((190, 190), Image.Resampling.LANCZOS)
 
-    tk.Label(left_frame, text="Student\n Management \nSystem",
-             font=("Arial", 18, "bold"), bg="#1e90ff", fg="white", justify="center").pack(pady=10)
+            tk_img1 = ImageTk.PhotoImage(img1)
+            root.image_references.append(tk_img1)
 
-    # RIGHT CANVAS
-    canvas_width = 1000
-    canvas_height = 650
-    canvas = tk.Canvas(root, width=canvas_width, height=canvas_height, highlightthickness=0)
+            tk.Label(
+                left_frame,
+                image=tk_img1,
+                bg="#1769AA"
+            ).pack(pady=25)
+
+        except Exception as e:
+            print("SBTE logo loading error:", e)
+
+    tk.Label(
+        left_frame,
+        text="STUDENT\nMANAGEMENT\nSYSTEM",
+        font=("Arial", 20, "bold"),
+        bg="#1769AA",
+        fg="white",
+        justify="center"
+    ).pack(pady=20)
+
+    tk.Frame(
+        left_frame,
+        bg="#64B5F6",
+        height=2
+    ).pack(fill="x", padx=35, pady=15)
+
+    tk.Label(
+        left_frame,
+        text="LEARN  •  GROW  •  SUCCEED",
+        font=("Arial", 9, "bold"),
+        bg="#1769AA",
+        fg="#DCEEFF"
+    ).pack(pady=10)
+
+    # ---------------- RIGHT PANEL ----------------
+
+    canvas = tk.Canvas(
+        root,
+        bg="#172A48",
+        highlightthickness=0,
+        bd=0
+    )
+
     canvas.pack(side="right", fill="both", expand=True)
 
-    try:
-        bg_img = Image.open(bg_image_path).resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
-        bg_tk_img = ImageTk.PhotoImage(bg_img)
-        canvas.create_image(0, 0, anchor="nw", image=bg_tk_img)
-    except Exception as e:
-        print("Error loading background image:", e)
+    root.update_idletasks()
+
+    canvas_width = canvas.winfo_width()
+    canvas_height = canvas.winfo_height()
+
+    # Background image
+    if PIL_OK:
+        try:
+            bg_img = Image.open(bg_image_path).convert("RGB")
+
+            bg_img = ImageOps.fit(
+                bg_img,
+                (canvas_width, canvas_height),
+                method=Image.Resampling.LANCZOS
+            )
+
+            bg_tk_img = ImageTk.PhotoImage(bg_img)
+            root.image_references.append(bg_tk_img)
+
+            canvas.create_image(
+                0, 0,
+                anchor="nw",
+                image=bg_tk_img
+            )
+
+            # Dark overlay for readable text
+            canvas.create_rectangle(
+                0, 0,
+                canvas_width, canvas_height,
+                fill="#10233D",
+                stipple="gray50",
+                outline=""
+            )
+
+        except Exception as e:
+            print("Background loading error:", e)
 
     center_x = canvas_width // 2
 
-    canvas.create_text(center_x, 40, text="Government Polytechnic Chapra, Bihar",
-                       font=("Arial", 30, "bold"), fill="black", justify="center")
+    canvas.create_text(
+        center_x, 65,
+        text="GOVERNMENT POLYTECHNIC CHAPRA",
+        font=("Arial", 25, "bold"),
+        fill="white",
+        justify="center"
+    )
 
-    try:
-        img2 = Image.open(image_path2).resize((200, 200), Image.Resampling.LANCZOS)
-        tk_img2 = ImageTk.PhotoImage(img2)
-        canvas.create_image(center_x, 200, image=tk_img2)
-    except Exception as e:
-        print("Error loading right image:", e)
+    canvas.create_text(
+        center_x, 105,
+        text="BIHAR",
+        font=("Arial", 15, "bold"),
+        fill="#8EDBD4"
+    )
 
-    canvas.create_text(center_x, 370, text="Student Management System",
-                       font=("Arial", 30, "bold"), fill="white")
-    canvas.create_text(center_x, 440, text="Loading...",
-                       font=("Arial", 15), fill="white")
+    # College logo
+    if PIL_OK:
+        try:
+            img2 = Image.open(image_path2).convert("RGBA")
+            img2.thumbnail((210, 210), Image.Resampling.LANCZOS)
 
-    def redirect_to_main():
-        time.sleep(3)
-        root.after(0, launch_main)
+            tk_img2 = ImageTk.PhotoImage(img2)
+            root.image_references.append(tk_img2)
 
-    def launch_main():
-        root.destroy()
-        # Make sure this path is correct!
-        main_script_path = r"C:\Users\kanur\PycharmProjects\PythonProject\main.py"
-        python_exe = sys.executable  # gets current Python interpreter
-        subprocess.Popen([python_exe, main_script_path])
+            canvas.create_image(
+                center_x,
+                290,
+                image=tk_img2
+            )
 
-    threading.Thread(target=redirect_to_main, daemon=True).start()
-    root.mainloop()
+        except Exception as e:
+            print("College logo loading error:", e)
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    splash_screen(root)
+    canvas.create_text(
+        center_x, 445,
+        text="STUDENT MANAGEMENT SYSTEM",
+        font=("Arial", 23, "bold"),
+        fill="white"
+    )
+
+    canvas.create_text(
+        center_x, 495,
+        text="A SMARTER AND SAFER CAMPUS EXPERIENCE",
+        font=("Arial", 11, "bold"),
+        fill="#B8D9F5"
+    )
+
+    canvas.create_text(
+        center_x, 555,
+        text="Loading application...",
+        font=("Arial", 13),
+        fill="#8EDBD4"
+    )
+
+    # Loading animation
+    loading_text = canvas.create_text(
+        center_x, 585,
+        text="● ○ ○",
+        font=("Arial", 15, "bold"),
+        fill="white"
+    )
+
+    def animate(index=0):
+        if not root.winfo_exists():
+            return
+
+        symbols = ["● ○ ○", "○ ● ○", "○ ○ ●"]
+
+        canvas.itemconfigure(
+            loading_text,
+            text=symbols[index % len(symbols)]
+        )
+
+        root.after(300, lambda: animate(index + 1))
+
+    animate()
+
+    # Automatically close splash after 3 seconds.
+    # main.py will open the StudentPortal after this window closes.
+    root.after(3000, root.destroy)
