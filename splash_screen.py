@@ -1,9 +1,9 @@
-
 import tkinter as tk
 import os
+import math
 
 try:
-    from PIL import Image, ImageTk, ImageOps
+    from PIL import Image, ImageTk, ImageOps, ImageDraw
     PIL_OK = True
 except ImportError:
     PIL_OK = False
@@ -11,221 +11,557 @@ except ImportError:
 
 def splash_screen(root):
 
-    root.title("Welcome to Student Management System")
-    root.geometry("1000x650")
-    root.resizable(False, False)
-    root.configure(bg="#FFFFFF")
+    WIDTH = 1200
+    HEIGHT = 720
 
-    # Center splash window
+    root.title("Government Polytechnic Chapra | Student Management System")
+    root.geometry(f"{WIDTH}x{HEIGHT}")
+    root.resizable(False, False)
+    root.configure(bg="#0B1830")
+
     root.update_idletasks()
 
-    width = 1000
-    height = 650
+    x = (root.winfo_screenwidth() - WIDTH) // 2
+    y = (root.winfo_screenheight() - HEIGHT) // 2
 
-    x = (root.winfo_screenwidth() - width) // 2
-    y = (root.winfo_screenheight() - height) // 2
+    root.geometry(f"{WIDTH}x{HEIGHT}+{x}+{y}")
 
-    root.geometry(f"{width}x{height}+{x}+{y}")
-
-    # Always use the folder containing this Python file
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    photo_dir = os.path.join(base_dir, "images")
-
-    image_path1 = os.path.join(photo_dir, "gpc.png")
-    image_path2 = os.path.join(photo_dir, "sbte.png")
-    bg_image_path = os.path.join(photo_dir, "a.jpg")
-
-    # Keep image references alive
     root.image_references = []
 
-    # ---------------- LEFT PANEL ----------------
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    PHOTO_DIR = os.path.join(BASE_DIR, "images")
 
-    left_frame = tk.Frame(
-        root,
-        bg="#1769AA",
-        width=280
+    gpc_path = os.path.join(PHOTO_DIR, "gpc.png")
+    sbte_path = os.path.join(PHOTO_DIR, "sbte.png")
+    bg_path = os.path.join(PHOTO_DIR, "a.jpg")
+
+    # ================= COLOR THEME =================
+
+    COLORS = {
+        "navy": "#102747",
+        "navy_dark": "#09172C",
+        "blue": "#1769AA",
+        "cyan": "#38D6D0",
+        "white": "#FFFFFF",
+        "muted": "#B7CBE3",
+        "light": "#EAF5FF",
+        "panel": "#172F50",
+        "accent": "#63E6DF",
+    }
+
+    # ================= HELPER FUNCTIONS =================
+
+    def load_image(path, size, fit=False):
+        if not PIL_OK or not os.path.exists(path):
+            return None
+
+        try:
+            img = Image.open(path).convert("RGBA")
+
+            if fit:
+                img = ImageOps.fit(
+                    img,
+                    size,
+                    method=Image.Resampling.LANCZOS
+                )
+            else:
+                img.thumbnail(
+                    size,
+                    Image.Resampling.LANCZOS
+                )
+
+            photo = ImageTk.PhotoImage(img)
+            root.image_references.append(photo)
+
+            return photo
+
+        except Exception as error:
+            print("Image loading error:", path, error)
+            return None
+
+    def rounded_rectangle(canvas, x1, y1, x2, y2, radius=20,
+                          fill="#FFFFFF", outline=""):
+
+        points = [
+            x1 + radius, y1,
+            x2 - radius, y1,
+            x2, y1,
+            x2, y1 + radius,
+            x2, y2 - radius,
+            x2, y2,
+            x2 - radius, y2,
+            x1 + radius, y2,
+            x1, y2,
+            x1, y2 - radius,
+            x1, y1 + radius,
+            x1, y1
+        ]
+
+        return canvas.create_polygon(
+            points,
+            smooth=True,
+            fill=fill,
+            outline=outline
+        )
+
+    # ================= MAIN BACKGROUND =================
+
+    main = tk.Frame(root, bg=COLORS["navy_dark"])
+    main.pack(fill="both", expand=True)
+
+    # ================= LEFT BRANDING PANEL =================
+
+    left = tk.Frame(
+        main,
+        bg=COLORS["navy"],
+        width=290
     )
 
-    left_frame.pack(side="left", fill="y")
-    left_frame.pack_propagate(False)
+    left.pack(side="left", fill="y")
+    left.pack_propagate(False)
 
-    tk.Label(
-        left_frame,
-        text="STATE BOARD\nOF TECHNICAL\nEDUCATION, BIHAR",
-        font=("Arial", 17, "bold"),
-        bg="#1769AA",
-        fg="white",
-        justify="center"
-    ).pack(pady=(35, 15))
-
-    # SBTE logo
-    if PIL_OK:
-        try:
-            img1 = Image.open(image_path1).convert("RGBA")
-            img1.thumbnail((190, 190), Image.Resampling.LANCZOS)
-
-            tk_img1 = ImageTk.PhotoImage(img1)
-            root.image_references.append(tk_img1)
-
-            tk.Label(
-                left_frame,
-                image=tk_img1,
-                bg="#1769AA"
-            ).pack(pady=25)
-
-        except Exception as e:
-            print("SBTE logo loading error:", e)
-
-    tk.Label(
-        left_frame,
-        text="STUDENT\nMANAGEMENT\nSYSTEM",
-        font=("Arial", 20, "bold"),
-        bg="#1769AA",
-        fg="white",
-        justify="center"
-    ).pack(pady=20)
-
+    # Decorative top strip
     tk.Frame(
-        left_frame,
-        bg="#64B5F6",
-        height=2
-    ).pack(fill="x", padx=35, pady=15)
+        left,
+        bg=COLORS["cyan"],
+        height=6
+    ).pack(fill="x")
+
+    # Institution heading
+    tk.Label(
+        left,
+        text="GOVERNMENT",
+        font=("Segoe UI", 12, "bold"),
+        bg=COLORS["navy"],
+        fg=COLORS["cyan"]
+    ).pack(pady=(38, 3))
 
     tk.Label(
-        left_frame,
+        left,
+        text="POLYTECHNIC",
+        font=("Segoe UI", 23, "bold"),
+        bg=COLORS["navy"],
+        fg="white"
+    ).pack()
+
+    tk.Label(
+        left,
+        text="CHAPRA, BIHAR",
+        font=("Segoe UI", 12, "bold"),
+        bg=COLORS["navy"],
+        fg=COLORS["muted"]
+    ).pack(pady=(3, 25))
+
+    # College logo
+    logo_frame = tk.Frame(
+        left,
+        bg="#FFFFFF",
+        width=170,
+        height=170
+    )
+    logo_frame.pack(pady=8)
+    logo_frame.pack_propagate(False)
+
+    gpc_logo = load_image(gpc_path, (150, 150))
+
+    if gpc_logo:
+        tk.Label(
+            logo_frame,
+            image=gpc_logo,
+            bg="white"
+        ).place(relx=0.5, rely=0.5, anchor="center")
+    else:
+        tk.Label(
+            logo_frame,
+            text="GPC",
+            font=("Segoe UI", 37, "bold"),
+            fg=COLORS["blue"],
+            bg="white"
+        ).place(relx=0.5, rely=0.5, anchor="center")
+
+    tk.Label(
+        left,
+        text="STUDENT",
+        font=("Segoe UI", 25, "bold"),
+        bg=COLORS["navy"],
+        fg="white"
+    ).pack(pady=(30, 0))
+
+    tk.Label(
+        left,
+        text="MANAGEMENT SYSTEM",
+        font=("Segoe UI", 12, "bold"),
+        bg=COLORS["navy"],
+        fg=COLORS["cyan"]
+    ).pack(pady=(1, 20))
+
+    # Divider
+    tk.Frame(
+        left,
+        bg="#345577",
+        height=1
+    ).pack(fill="x", padx=35)
+
+    tk.Label(
+        left,
+        text="STATE BOARD OF TECHNICAL\nEDUCATION, BIHAR",
+        font=("Segoe UI", 10, "bold"),
+        justify="center",
+        bg=COLORS["navy"],
+        fg=COLORS["muted"]
+    ).pack(pady=(20, 10))
+
+    sbte_logo = load_image(sbte_path, (100, 75))
+
+    if sbte_logo:
+        tk.Label(
+            left,
+            image=sbte_logo,
+            bg=COLORS["navy"]
+        ).pack(pady=5)
+
+    tk.Label(
+        left,
         text="LEARN  •  GROW  •  SUCCEED",
-        font=("Arial", 9, "bold"),
-        bg="#1769AA",
-        fg="#DCEEFF"
-    ).pack(pady=10)
+        font=("Segoe UI", 9, "bold"),
+        bg=COLORS["navy"],
+        fg=COLORS["cyan"]
+    ).pack(side="bottom", pady=25)
 
-    # ---------------- RIGHT PANEL ----------------
+    # ================= RIGHT CONTENT PANEL =================
 
-    canvas = tk.Canvas(
-        root,
-        bg="#172A48",
+    right = tk.Canvas(
+        main,
+        bg=COLORS["navy_dark"],
         highlightthickness=0,
         bd=0
     )
 
-    canvas.pack(side="right", fill="both", expand=True)
+    right.pack(side="right", fill="both", expand=True)
 
     root.update_idletasks()
 
-    canvas_width = canvas.winfo_width()
-    canvas_height = canvas.winfo_height()
+    CW = right.winfo_width()
+    CH = right.winfo_height()
 
-    # Background image
-    if PIL_OK:
-        try:
-            bg_img = Image.open(bg_image_path).convert("RGB")
+    background = load_image(
+        bg_path,
+        (CW, CH),
+        fit=True
+    )
 
-            bg_img = ImageOps.fit(
-                bg_img,
-                (canvas_width, canvas_height),
-                method=Image.Resampling.LANCZOS
-            )
+    if background:
 
-            bg_tk_img = ImageTk.PhotoImage(bg_img)
-            root.image_references.append(bg_tk_img)
+        right.create_image(
+            0, 0,
+            anchor="nw",
+            image=background
+        )
 
-            canvas.create_image(
-                0, 0,
-                anchor="nw",
-                image=bg_tk_img
-            )
+        # Dark overlay
+        right.create_rectangle(
+            0, 0, CW, CH,
+            fill="#07172C",
+            stipple="gray50",
+            outline=""
+        )
 
-            # Dark overlay for readable text
-            canvas.create_rectangle(
-                0, 0,
-                canvas_width, canvas_height,
-                fill="#10233D",
-                stipple="gray50",
+    else:
+        # Fallback if background image is missing
+        right.configure(bg="#102B4D")
+
+        for i in range(0, CH, 3):
+            ratio = i / max(CH, 1)
+
+            r = int(12 + ratio * 8)
+            g = int(35 + ratio * 15)
+            b = int(65 + ratio * 30)
+
+            color = f"#{r:02x}{g:02x}{b:02x}"
+
+            right.create_rectangle(
+                0, i, CW, i + 3,
+                fill=color,
                 outline=""
             )
 
-        except Exception as e:
-            print("Background loading error:", e)
+    CENTER = CW // 2
 
-    center_x = canvas_width // 2
+    # ================= DECORATIVE ELEMENTS =================
 
-    canvas.create_text(
-        center_x, 65,
-        text="GOVERNMENT POLYTECHNIC CHAPRA",
-        font=("Arial", 25, "bold"),
-        fill="white",
-        justify="center"
+    right.create_oval(
+        CW - 180, -110,
+        CW + 100, 170,
+        outline="#315B7C",
+        width=2
     )
 
-    canvas.create_text(
-        center_x, 105,
-        text="BIHAR",
-        font=("Arial", 15, "bold"),
-        fill="#8EDBD4"
+    right.create_oval(
+        CW - 140, -70,
+        CW + 60, 130,
+        outline="#244967",
+        width=2
     )
 
-    # College logo
-    if PIL_OK:
-        try:
-            img2 = Image.open(image_path2).convert("RGBA")
-            img2.thumbnail((210, 210), Image.Resampling.LANCZOS)
+    right.create_oval(
+        -100, CH - 170,
+        150, CH + 80,
+        outline="#315B7C",
+        width=2
+    )
 
-            tk_img2 = ImageTk.PhotoImage(img2)
-            root.image_references.append(tk_img2)
+    # ================= HEADER =================
 
-            canvas.create_image(
-                center_x,
-                290,
-                image=tk_img2
-            )
+    right.create_text(
+        CENTER,
+        65,
+        text="WELCOME TO",
+        font=("Segoe UI", 12, "bold"),
+        fill=COLORS["cyan"]
+    )
 
-        except Exception as e:
-            print("College logo loading error:", e)
-
-    canvas.create_text(
-        center_x, 445,
-        text="STUDENT MANAGEMENT SYSTEM",
-        font=("Arial", 23, "bold"),
+    right.create_text(
+        CENTER,
+        105,
+        text="GOVERNMENT POLYTECHNIC",
+        font=("Segoe UI", 26, "bold"),
         fill="white"
     )
 
-    canvas.create_text(
-        center_x, 495,
-        text="A SMARTER AND SAFER CAMPUS EXPERIENCE",
-        font=("Arial", 11, "bold"),
-        fill="#B8D9F5"
+    right.create_text(
+        CENTER,
+        143,
+        text="CHAPRA  •  BIHAR",
+        font=("Segoe UI", 13, "bold"),
+        fill="#B9DDF7"
     )
 
-    canvas.create_text(
-        center_x, 555,
-        text="Loading application...",
-        font=("Arial", 13),
-        fill="#8EDBD4"
+    # Header underline
+    right.create_rectangle(
+        CENTER - 45, 166,
+        CENTER + 45, 169,
+        fill=COLORS["cyan"],
+        outline=""
     )
 
-    # Loading animation
-    loading_text = canvas.create_text(
-        center_x, 585,
-        text="● ○ ○",
-        font=("Arial", 15, "bold"),
-        fill="white"
+    # ================= COLLEGE LOGO =================
+
+    logo2 = load_image(
+        sbte_path,
+        (175, 145)
     )
 
-    def animate(index=0):
-        if not root.winfo_exists():
-            return
+    if logo2:
 
-        symbols = ["● ○ ○", "○ ● ○", "○ ○ ●"]
-
-        canvas.itemconfigure(
-            loading_text,
-            text=symbols[index % len(symbols)]
+        rounded_rectangle(
+            right,
+            CENTER - 95, 190,
+            CENTER + 95, 345,
+            radius=18,
+            fill="#FFFFFF"
         )
 
-        root.after(300, lambda: animate(index + 1))
+        right.create_image(
+            CENTER,
+            267,
+            image=logo2
+        )
+
+    else:
+
+        rounded_rectangle(
+            right,
+            CENTER - 80, 200,
+            CENTER + 80, 330,
+            radius=18,
+            fill="#FFFFFF"
+        )
+
+        right.create_text(
+            CENTER,
+            265,
+            text="GPC",
+            font=("Segoe UI", 42, "bold"),
+            fill=COLORS["blue"]
+        )
+
+    # ================= MAIN TITLE CARD =================
+
+    rounded_rectangle(
+        right,
+        45, 365,
+        CW - 45, 525,
+        radius=20,
+        fill="#102747"
+    )
+
+    right.create_text(
+        CENTER,
+        400,
+        text="STUDENT MANAGEMENT SYSTEM",
+        font=("Segoe UI", 23, "bold"),
+        fill="white"
+    )
+
+    right.create_text(
+        CENTER,
+        440,
+        text="A SMARTER AND SAFER CAMPUS EXPERIENCE",
+        font=("Segoe UI", 10, "bold"),
+        fill="#B9DDF7"
+    )
+
+    # Small feature labels
+    features = [
+        "ACADEMICS",
+        "ATTENDANCE",
+        "EXAMINATIONS",
+        "RESULTS"
+    ]
+
+    feature_width = 125
+    gap = 12
+    total_width = len(features) * feature_width + (len(features) - 1) * gap
+    start_x = CENTER - total_width // 2
+
+    for i, feature in enumerate(features):
+
+        fx = start_x + i * (feature_width + gap)
+
+        rounded_rectangle(
+            right,
+            fx, 470,
+            fx + feature_width, 500,
+            radius=9,
+            fill="#21466B"
+        )
+
+        right.create_text(
+            fx + feature_width // 2,
+            485,
+            text=feature,
+            font=("Segoe UI", 8, "bold"),
+            fill=COLORS["cyan"]
+        )
+
+    # ================= LOADING SECTION =================
+
+    right.create_text(
+        CENTER,
+        565,
+        text="INITIALIZING APPLICATION",
+        font=("Segoe UI", 10, "bold"),
+        fill="#D7E8F8"
+    )
+
+    loading_status = right.create_text(
+        CENTER,
+        590,
+        text="Preparing your workspace...",
+        font=("Segoe UI", 9),
+        fill=COLORS["cyan"]
+    )
+
+
+    bar_width = 340
+    bar_x = CENTER - bar_width // 2
+
+    rounded_rectangle(
+        right,
+        bar_x, 615,
+        bar_x + bar_width, 625,
+        radius=5,
+        fill="#34516D"
+    )
+
+    progress = right.create_rectangle(
+        bar_x, 615,
+        bar_x, 625,
+        fill=COLORS["cyan"],
+        outline=""
+    )
+
+    # Loading dots
+    loading_dots = right.create_text(
+        CENTER,
+        647,
+        text="●  ○  ○",
+        font=("Segoe UI", 10, "bold"),
+        fill="white"
+    )
+
+    animation_state = {
+        "progress": 0,
+        "dots": 0,
+        "active": True
+    }
+
+    status_messages = [
+        "Preparing your workspace...",
+        "Loading academic resources...",
+        "Initializing student portal...",
+        "Almost ready..."
+    ]
+
+    def animate():
+
+        if not animation_state["active"]:
+            return
+
+        try:
+            if not root.winfo_exists():
+                return
+
+            animation_state["progress"] += 2
+
+            if animation_state["progress"] > 100:
+                animation_state["progress"] = 0
+
+            animation_state["dots"] += 1
+
+            p = animation_state["progress"]
+
+            right.coords(
+                progress,
+                bar_x,
+                615,
+                bar_x + (bar_width * p / 100),
+                625
+            )
+
+            dots = ["●  ○  ○", "○  ●  ○", "○  ○  ●"]
+
+            right.itemconfigure(
+                loading_dots,
+                text=dots[animation_state["dots"] % 3]
+            )
+
+            message_index = min(
+                animation_state["progress"] // 25,
+                3
+            )
+
+            right.itemconfigure(
+                loading_status,
+                text=status_messages[message_index]
+            )
+
+            root.after(35, animate)
+
+        except tk.TclError:
+            animation_state["active"] = False
 
     animate()
 
-    # Automatically close splash after 3 seconds.
-    # main.py will open the StudentPortal after this window closes.
-    root.after(3000, root.destroy)
+    def close_splash():
+
+        animation_state["active"] = False
+
+        try:
+            if root.winfo_exists():
+                root.destroy()
+        except tk.TclError:
+            pass
+
+
+    root.after(5000, close_splash)

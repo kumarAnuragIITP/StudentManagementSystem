@@ -1,2340 +1,1175 @@
-# =========================================================
-# FILE: admin_panel.py
-# =========================================================
-# MODERN FULL-PAGE STUDENT MANAGEMENT DASHBOARD
-#
-# IMPORTANT:
-# - NO VISIBLE SCROLLBAR
-# - WHOLE PAGE SCROLLS
-# - MOUSE WHEEL / TOUCHPAD SCROLL
-# - PAGEUP / PAGEDOWN / HOME / END
-# - COMPLETE FORM
-# - COMPLETE STUDENT DIRECTORY
-# - SEARCH
-# - PHOTO UPLOAD
-# - ADD
-# - DELETE
-# - CRUD
-# =========================================================
+"""
+Default dev account : dev@admin.local / Dev@12345
+"""
 
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-from PIL import Image, ImageTk
-from pymongo import MongoClient
-from datetime import datetime
 import os
-import shutil
-
-
-# =========================================================
-# COLORS
-# =========================================================
-
-BACKGROUND = "#F5F7FB"
-SURFACE = "#FFFFFF"
-SURFACE_2 = "#F8FAFC"
-
-PRIMARY = "#6D28D9"
-PRIMARY_HOVER = "#5B21B6"
-
-SUCCESS = "#059669"
-DANGER = "#DC2626"
-WARNING = "#D97706"
-
-TEXT = "#111827"
-TEXT_2 = "#374151"
-MUTED = "#6B7280"
-LIGHT_TEXT = "#9CA3AF"
-
-BORDER = "#E5E7EB"
-INPUT_BG = "#F9FAFB"
-
-WHITE = "#FFFFFF"
-
-
-# =========================================================
-# DATABASE
-# =========================================================
-
-client = MongoClient(
-    "mongodb://localhost:27017/"
-)
-
-db = client["student_management"]
-
-students_collection = db["students"]
-
-
-# =========================================================
-# MAIN CLASS
-# =========================================================
-
-class StudentManagementApp:
-
-    def __init__(self, parent, session=None):
-
-        self.parent = parent
-        self.session = session or {}
-
-        self.selected_image_path = None
-        self.image_preview = None
-
-        self.entries = {}
-
-        self.build_ui()
-        self.load_students()
-
-    # =====================================================
-    # CLEAR
-    # =====================================================
-
-    def clear_parent(self):
-
-        for widget in self.parent.winfo_children():
-            widget.destroy()
-
-    # =====================================================
-    # MAIN UI
-    # =====================================================
-
-    def build_ui(self):
-
-        self.clear_parent()
-
-        self.parent.configure(
-            bg=BACKGROUND
-        )
-
-        # =================================================
-        # ROOT CANVAS
-        #
-        # NO VISIBLE SCROLLBAR
-        # =================================================
-
-        self.canvas = tk.Canvas(
-            self.parent,
-            bg=BACKGROUND,
-            highlightthickness=0,
-            bd=0
-        )
-
-        self.canvas.pack(
-            fill="both",
-            expand=True
-        )
-
-        # =================================================
-        # COMPLETE PAGE
-        # =================================================
-
-        self.page = tk.Frame(
-            self.canvas,
-            bg=BACKGROUND
-        )
-
-        self.canvas_window = self.canvas.create_window(
-            (0, 0),
-            window=self.page,
-            anchor="nw"
-        )
-
-        # =================================================
-        # SCROLL CONFIGURATION
-        # =================================================
-
-        self.page.bind(
-            "<Configure>",
-            self.update_scroll_region
-        )
-
-        self.canvas.bind(
-            "<Configure>",
-            self.resize_page
-        )
-
-        # =================================================
-        # MOUSE / TOUCHPAD SCROLL
-        # =================================================
-
-        self.canvas.bind_all(
-            "<MouseWheel>",
-            self.mousewheel,
-            add="+"
-        )
-
-
-
-        # Linux
-        self.canvas.bind_all(
-            "<Button-4>",
-            self.scroll_up
-        )
-
-        self.canvas.bind_all(
-            "<Button-5>",
-            self.scroll_down
-        )
-
-        # Keyboard navigation
-        self.canvas.bind_all(
-            "<Prior>",
-            self.page_up
-        )
-
-        self.canvas.bind_all(
-            "<Next>",
-            self.page_down
-        )
-
-        self.canvas.bind_all(
-            "<Home>",
-            self.page_home
-        )
-
-        self.canvas.bind_all(
-            "<End>",
-            self.page_end
-        )
-
-        # =================================================
-        # BUILD COMPLETE PAGE
-        # =================================================
-
-        self.build_header()
-
-        self.build_welcome()
-
-        self.build_registration_section()
-
-        self.build_student_directory()
-
-        # Bottom spacing
-        tk.Frame(
-            self.page,
-            bg=BACKGROUND,
-            height=60
-        ).pack(
-            fill="x"
-        )
-
-    # =====================================================
-    # SCROLL SYSTEM
-    # =====================================================
-
-    def update_scroll_region(self, event=None):
-
-        self.canvas.configure(
-            scrollregion=self.canvas.bbox("all")
-        )
-
-    def resize_page(self, event):
-
-        self.canvas.itemconfigure(
-            self.canvas_window,
-            width=event.width
-        )
-
-        self.update_scroll_region()
-
-    # =====================================================
-    # TOUCHPAD / MOUSE SCROLLING
-    # =====================================================
-
-    # =====================================================
-    # SMOOTH MOUSE + TWO-FINGER TOUCHPAD SCROLLING
-    # =====================================================
-
-    def mousewheel(self, event):
-        """
-        Smooth mouse wheel + two-finger touchpad scrolling for Windows/Mac/Linux.
-        """
-        # On Windows, event.delta is typically a multiple of 120.
-        # Precision touchpads provide smaller values.
-        if event.delta:
-            # For Windows / macOS
-            amount = int(-1 * (event.delta / 120))
-            if amount == 0:
-                amount = -1 if event.delta > 0 else 1
-            self.canvas.yview_scroll(amount, "units")
-        elif hasattr(event, 'num'):
-            # For Linux button-4 / button-5
-            if event.num == 4:
-                self.canvas.yview_scroll(-3, "units")
-            elif event.num == 5:
-                self.canvas.yview_scroll(3, "units")
-
-        return "break"
-
-    def scroll_down(self, event=None):
-
-        self.canvas.yview_scroll(
-            3,
-            "units"
-        )
-
-        return "break"
-
-    def scroll_up(self, event):
-
-        self.canvas.yview_scroll(
-            -3,
-            "units"
-        )
-
-    def scroll_down(self, event):
-
-        self.canvas.yview_scroll(
-            3,
-            "units"
-        )
-
-    def page_up(self, event):
-
-        self.canvas.yview_scroll(
-            -8,
-            "units"
-        )
-
-    def page_down(self, event):
-
-        self.canvas.yview_scroll(
-            8,
-            "units"
-        )
-
-    def page_home(self, event):
-
-        self.canvas.yview_moveto(0)
-
-    def page_end(self, event):
-
-        self.canvas.yview_moveto(1)
-
-    # =====================================================
-    # HEADER
-    # =====================================================
-
-    def build_header(self):
-
-        header = tk.Frame(
-            self.page,
-            bg=SURFACE,
-            height=86,
-            highlightbackground=BORDER,
-            highlightthickness=1
-        )
-
-        header.pack(
-            fill="x",
-            padx=28,
-            pady=(25, 8)
-        )
-
-        header.pack_propagate(False)
-
-        # Left
-        left = tk.Frame(
-            header,
-            bg=SURFACE
-        )
-
-        left.pack(
-            side="left",
-            padx=22,
-            pady=12
-        )
-
-        tk.Label(
-            left,
-            text="STUDENT",
-            bg=SURFACE,
-            fg=PRIMARY,
-            font=("Segoe UI", 10, "bold")
-        ).pack(
-            anchor="w"
-        )
-
-        tk.Label(
-            left,
-            text="Management Dashboard",
-            bg=SURFACE,
-            fg=TEXT,
-            font=("Segoe UI", 22, "bold")
-        ).pack(
-            anchor="w"
-        )
-
-        # Right status
-        status = tk.Frame(
-            header,
-            bg="#F0FDF4",
-            highlightbackground="#BBF7D0",
-            highlightthickness=1
-        )
-
-        status.pack(
-            side="right",
-            padx=22,
-            pady=20
-        )
-
-        tk.Label(
-            status,
-            text="●  SYSTEM ACTIVE",
-            bg="#F0FDF4",
-            fg=SUCCESS,
-            font=("Segoe UI", 9, "bold"),
-            padx=14,
-            pady=8
-        ).pack()
-
-    # =====================================================
-    # WELCOME
-    # =====================================================
-
-    def build_welcome(self):
-
-        wrapper = tk.Frame(
-            self.page,
-            bg=BACKGROUND
-        )
-
-        wrapper.pack(
-            fill="x",
-            padx=32,
-            pady=(12, 22)
-        )
-
-        tk.Label(
-            wrapper,
-            text="Student Administration",
-            bg=BACKGROUND,
-            fg=TEXT,
-            font=("Segoe UI", 30, "bold")
-        ).pack(
-            anchor="w"
-        )
-
-        tk.Label(
-            wrapper,
-            text=(
-                "Register students, manage records, upload photographs "
-                "and search the complete student database from one page."
-            ),
-            bg=BACKGROUND,
-            fg=MUTED,
-            font=("Segoe UI", 12)
-        ).pack(
-            anchor="w",
-            pady=(5, 0)
-        )
-
-    # =====================================================
-    # REGISTRATION SECTION
-    # =====================================================
-
-    def build_registration_section(self):
-
-        outer = tk.Frame(
-            self.page,
-            bg=SURFACE,
-            highlightbackground=BORDER,
-            highlightthickness=1
-        )
-
-        outer.pack(
-            fill="x",
-            padx=28,
-            pady=10
-        )
-
-        # =================================================
-        # SECTION HEADER
-        # =================================================
-
-        section_header = tk.Frame(
-            outer,
-            bg=SURFACE
-        )
-
-        section_header.pack(
-            fill="x",
-            padx=25,
-            pady=(22, 10)
-        )
-
-        tk.Label(
-            section_header,
-            text="01",
-            bg=PRIMARY,
-            fg=WHITE,
-            font=("Segoe UI", 10, "bold"),
-            width=4,
-            pady=6
-        ).pack(
-            side="left"
-        )
-
-        title_box = tk.Frame(
-            section_header,
-            bg=SURFACE
-        )
-
-        title_box.pack(
-            side="left",
-            padx=12
-        )
-
-        tk.Label(
-            title_box,
-            text="Student Registration",
-            bg=SURFACE,
-            fg=TEXT,
-            font=("Segoe UI", 19, "bold")
-        ).pack(
-            anchor="w"
-        )
-
-        tk.Label(
-            title_box,
-            text="Enter complete student information below",
-            bg=SURFACE,
-            fg=MUTED,
-            font=("Segoe UI", 10)
-        ).pack(
-            anchor="w"
-        )
-
-        # =================================================
-        # FORM CONTENT
-        # =================================================
-
-        form = tk.Frame(
-            outer,
-            bg=SURFACE
-        )
-
-        form.pack(
-            fill="x",
-            padx=25,
-            pady=(5, 25)
-        )
-
-        # -------------------------------------------------
-        # BASIC INFORMATION
-        # -------------------------------------------------
-
-        self.section_title(
-            form,
-            "Basic Information",
-            "Student identity and personal details"
-        )
-
-        basic = tk.Frame(
-            form,
-            bg=SURFACE
-        )
-
-        basic.pack(
-            fill="x",
-            pady=(12, 20)
-        )
-
-        self.sid = self.form_entry(
-            basic,
-            "Student ID *",
-            0,
-            0
-        )
-
-        self.roll = self.form_entry(
-            basic,
-            "Roll Number *",
-            0,
-            1
-        )
-
-        self.name = self.form_entry(
-            basic,
-            "Student Full Name *",
-            0,
-            2
-        )
-
-        self.father_name = self.form_entry(
-            basic,
-            "Father Name *",
-            1,
-            0
-        )
-
-        self.mother_name = self.form_entry(
-            basic,
-            "Mother Name",
-            1,
-            1
-        )
-
-        self.gender = self.form_combo(
-            basic,
-            "Gender *",
-            ["Male", "Female", "Other"],
-            1,
-            2
-        )
-
-        self.dob = self.form_entry(
-            basic,
-            "Date Of Birth",
-            2,
-            0
-        )
-
-        self.age = self.form_entry(
-            basic,
-            "Age",
-            2,
-            1
-        )
-
-        self.marital_status = self.form_combo(
-            basic,
-            "Marital Status",
-            ["Single", "Married"],
-            2,
-            2
-        )
-
-        self.address = self.form_entry(
-            basic,
-            "Address",
-            3,
-            0,
-            colspan=3
-        )
-
-        # -------------------------------------------------
-        # ACADEMIC INFORMATION
-        # -------------------------------------------------
-
-        self.section_title(
-            form,
-            "Academic Information",
-            "College, course, branch and semester details"
-        )
-
-        academic = tk.Frame(
-            form,
-            bg=SURFACE
-        )
-
-        academic.pack(
-            fill="x",
-            pady=(12, 20)
-        )
-
-        self.college = self.form_entry(
-            academic,
-            "College Name *",
-            0,
-            0
-        )
-
-        self.department = self.form_entry(
-            academic,
-            "Department",
-            0,
-            1
-        )
-
-        self.branch = self.form_entry(
-            academic,
-            "Branch Name *",
-            0,
-            2
-        )
-
-        self.course = self.form_entry(
-            academic,
-            "Course Name",
-            1,
-            0
-        )
-
-        self.semester = self.form_combo(
-            academic,
-            "Semester *",
-            [
-                "1", "2", "3", "4",
-                "5", "6", "7", "8"
-            ],
-            1,
-            1
-        )
-
-        self.blood_group = self.form_combo(
-            academic,
-            "Blood Group",
-            [
-                "A+", "A-",
-                "B+", "B-",
-                "AB+", "AB-",
-                "O+", "O-"
-            ],
-            1,
-            2
-        )
-
-        self.admission_date = self.form_entry(
-            academic,
-            "Date Of Admission",
-            2,
-            0
-        )
-
-        self.exit_date = self.form_entry(
-            academic,
-            "Exit Date",
-            2,
-            1
-        )
-
-        # -------------------------------------------------
-        # CONTACT INFORMATION
-        # -------------------------------------------------
-
-        self.section_title(
-            form,
-            "Contact Information",
-            "Student and parent contact details"
-        )
-
-        contact = tk.Frame(
-            form,
-            bg=SURFACE
-        )
-
-        contact.pack(
-            fill="x",
-            pady=(12, 20)
-        )
-
-        self.email = self.form_entry(
-            contact,
-            "Email ID *",
-            0,
-            0
-        )
-
-        self.mobile = self.form_entry(
-            contact,
-            "Student Mobile Number *",
-            0,
-            1
-        )
-
-        self.parent_mobile = self.form_entry(
-            contact,
-            "Parents Mobile Number",
-            0,
-            2
-        )
-
-        self.linkedin = self.form_entry(
-            contact,
-            "LinkedIn ID",
-            1,
-            0,
-            colspan=3
-        )
-
-        # -------------------------------------------------
-        # PHOTO
-        # -------------------------------------------------
-
-        self.section_title(
-            form,
-            "Student Photograph",
-            "Upload the student's profile photograph"
-        )
-
-        photo_area = tk.Frame(
-            form,
-            bg=SURFACE_2,
-            highlightbackground=BORDER,
-            highlightthickness=1
-        )
-
-        photo_area.pack(
-            fill="x",
-            pady=(12, 20)
-        )
-
-        photo_left = tk.Frame(
-            photo_area,
-            bg=SURFACE_2
-        )
-
-        photo_left.pack(
-            side="left",
-            padx=20,
-            pady=18
-        )
-
-        self.preview_label = tk.Label(
-            photo_left,
-            text="PHOTO\nPREVIEW",
-            bg="#EEF2FF",
-            fg=PRIMARY,
-            width=16,
-            height=8,
-            font=("Segoe UI", 9, "bold")
-        )
-
-        self.preview_label.pack()
-
-        photo_right = tk.Frame(
-            photo_area,
-            bg=SURFACE_2
-        )
-
-        photo_right.pack(
-            side="left",
-            padx=20,
-            pady=20,
-            fill="x",
-            expand=True
-        )
-
-        tk.Label(
-            photo_right,
-            text="Student Photo Upload *",
-            bg=SURFACE_2,
-            fg=TEXT,
-            font=("Segoe UI", 12, "bold")
-        ).pack(
-            anchor="w"
-        )
-
-        tk.Label(
-            photo_right,
-            text="PNG, JPG or JPEG • Recommended square image",
-            bg=SURFACE_2,
-            fg=MUTED,
-            font=("Segoe UI", 9)
-        ).pack(
-            anchor="w",
-            pady=(4, 12)
-        )
-
-        tk.Button(
-            photo_right,
-            text="  UPLOAD STUDENT PHOTO  ",
-            command=self.select_image,
-            bg=PRIMARY,
-            fg=WHITE,
-            activebackground=PRIMARY_HOVER,
-            activeforeground=WHITE,
-            relief="flat",
-            cursor="hand2",
-            font=("Segoe UI", 10, "bold"),
-            padx=10,
-            pady=10
-        ).pack(
-            anchor="w"
-        )
-
-        # -------------------------------------------------
-        # ACTIONS
-        # -------------------------------------------------
-
-        actions = tk.Frame(
-            form,
-            bg=SURFACE
-        )
-
-        actions.pack(
-            fill="x",
-            pady=(5, 5)
-        )
-
-        tk.Button(
-            actions,
-            text="AI VALIDATE REQUIRED FIELDS",
-            command=self.validate_fields,
-            bg="#FEF3C7",
-            fg="#92400E",
-            activebackground="#FDE68A",
-            relief="flat",
-            cursor="hand2",
-            font=("Segoe UI", 10, "bold"),
-            padx=18,
-            pady=12
-        ).pack(
-            side="left",
-            padx=(0, 10)
-        )
-
-        tk.Button(
-            actions,
-            text="ENABLE CRUD OPERATIONS",
-            command=self.enable_crud,
-            bg="#EDE9FE",
-            fg="#5B21B6",
-            activebackground="#DDD6FE",
-            relief="flat",
-            cursor="hand2",
-            font=("Segoe UI", 10, "bold"),
-            padx=18,
-            pady=12
-        ).pack(
-            side="left"
-        )
-
-        # Main actions on right
-        tk.Button(
-            actions,
-            text="DELETE STUDENT",
-            command=self.delete_student,
-            bg="#FEE2E2",
-            fg=DANGER,
-            activebackground="#FECACA",
-            relief="flat",
-            cursor="hand2",
-            font=("Segoe UI", 10, "bold"),
-            padx=20,
-            pady=12
-        ).pack(
-            side="right"
-        )
-
-        tk.Button(
-            actions,
-            text="ADD STUDENT",
-            command=self.add_student,
-            bg=SUCCESS,
-            fg=WHITE,
-            activebackground="#047857",
-            relief="flat",
-            cursor="hand2",
-            font=("Segoe UI", 11, "bold"),
-            padx=28,
-            pady=12
-        ).pack(
-            side="right",
-            padx=10
-        )
-
-    # =====================================================
-    # SECTION TITLE
-    # =====================================================
-
-    def section_title(
-        self,
-        parent,
-        title,
-        subtitle
-    ):
-
-        box = tk.Frame(
-            parent,
-            bg=SURFACE
-        )
-
-        box.pack(
-            fill="x",
-            pady=(12, 0)
-        )
-
-        tk.Label(
-            box,
-            text=title,
-            bg=SURFACE,
-            fg=TEXT,
-            font=("Segoe UI", 13, "bold")
-        ).pack(
-            anchor="w"
-        )
-
-        tk.Label(
-            box,
-            text=subtitle,
-            bg=SURFACE,
-            fg=MUTED,
-            font=("Segoe UI", 9)
-        ).pack(
-            anchor="w",
-            pady=(2, 0)
-        )
-
-        tk.Frame(
-            box,
-            bg=BORDER,
-            height=1
-        ).pack(
-            fill="x",
-            pady=(9, 0)
-        )
-
-    # =====================================================
-    # FORM ENTRY
-    # =====================================================
-
-    def form_entry(
-        self,
-        parent,
-        label,
-        row,
-        column,
-        colspan=1
-    ):
-
-        box = tk.Frame(
-            parent,
-            bg=SURFACE
-        )
-
-        box.grid(
-            row=row,
-            column=column,
-            columnspan=colspan,
-            sticky="ew",
-            padx=6,
-            pady=6
-        )
-
-        parent.grid_columnconfigure(
-            column,
-            weight=1
-        )
-
-        tk.Label(
-            box,
-            text=label,
-            bg=SURFACE,
-            fg=TEXT_2,
-            font=("Segoe UI", 9, "bold")
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
-
-        entry = tk.Entry(
-            box,
-            bg=INPUT_BG,
-            fg=TEXT,
-            insertbackground=TEXT,
-            relief="flat",
-            highlightthickness=1,
-            highlightbackground=BORDER,
-            highlightcolor=PRIMARY,
-            font=("Segoe UI", 10)
-        )
-
-        entry.pack(
-            fill="x",
-            ipady=9
-        )
-
-        return entry
-
-    # =====================================================
-    # FORM COMBO
-    # =====================================================
-
-    def form_combo(
-        self,
-        parent,
-        label,
-        values,
-        row,
-        column,
-        colspan=1
-    ):
-
-        box = tk.Frame(
-            parent,
-            bg=SURFACE
-        )
-
-        box.grid(
-            row=row,
-            column=column,
-            columnspan=colspan,
-            sticky="ew",
-            padx=6,
-            pady=6
-        )
-
-        parent.grid_columnconfigure(
-            column,
-            weight=1
-        )
-
-        tk.Label(
-            box,
-            text=label,
-            bg=SURFACE,
-            fg=TEXT_2,
-            font=("Segoe UI", 9, "bold")
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
-
-        combo = ttk.Combobox(
-            box,
-            values=values,
-            state="readonly",
-            font=("Segoe UI", 10)
-        )
-
-        combo.pack(
-            fill="x",
-            ipady=7
-        )
-
-        return combo
-
-    # =====================================================
-    # STUDENT DIRECTORY
-    # =====================================================
-
-    def build_student_directory(self):
-
-        outer = tk.Frame(
-            self.page,
-            bg=SURFACE,
-            highlightbackground=BORDER,
-            highlightthickness=1
-        )
-
-        outer.pack(
-            fill="x",
-            padx=28,
-            pady=(22, 10)
-        )
-
-        # =================================================
-        # DIRECTORY HEADER
-        # =================================================
-
-        header = tk.Frame(
-            outer,
-            bg=SURFACE
-        )
-
-        header.pack(
-            fill="x",
-            padx=25,
-            pady=(22, 12)
-        )
-
-        tk.Label(
-            header,
-            text="02",
-            bg="#111827",
-            fg=WHITE,
-            font=("Segoe UI", 10, "bold"),
-            width=4,
-            pady=6
-        ).pack(
-            side="left"
-        )
-
-        title_box = tk.Frame(
-            header,
-            bg=SURFACE
-        )
-
-        title_box.pack(
-            side="left",
-            padx=12
-        )
-
-        tk.Label(
-            title_box,
-            text="Student Directory",
-            bg=SURFACE,
-            fg=TEXT,
-            font=("Segoe UI", 19, "bold")
-        ).pack(
-            anchor="w"
-        )
-
-        tk.Label(
-            title_box,
-            text="Browse and search complete student records",
-            bg=SURFACE,
-            fg=MUTED,
-            font=("Segoe UI", 10)
-        ).pack(
-            anchor="w"
-        )
-
-        # =================================================
-        # SEARCH BAR
-        # =================================================
-
-        search = tk.Frame(
-            outer,
-            bg=SURFACE_2,
-            highlightbackground=BORDER,
-            highlightthickness=1
-        )
-
-        search.pack(
-            fill="x",
-            padx=25,
-            pady=(5, 18)
-        )
-
-        self.search_type = ttk.Combobox(
-            search,
-            values=[
-                "name",
-                "roll",
-                "sid",
-                "mobile",
-                "father_name"
-            ],
-            state="readonly",
-            width=16,
-            font=("Segoe UI", 10)
-        )
-
-        self.search_type.current(0)
-
-        self.search_type.pack(
-            side="left",
-            padx=12,
-            pady=12,
-            ipady=5
-        )
-
-        self.search_var = tk.StringVar()
-
-        self.search_entry = tk.Entry(
-            search,
-            textvariable=self.search_var,
-            bg=WHITE,
-            fg=TEXT,
-            insertbackground=TEXT,
-            relief="flat",
-            highlightthickness=1,
-            highlightbackground=BORDER,
-            font=("Segoe UI", 10)
-        )
-
-        self.search_entry.pack(
-            side="left",
-            fill="x",
-            expand=True,
-            padx=5,
-            ipady=10
-        )
-
-        self.search_entry.bind(
-            "<Return>",
-            lambda event: self.search_student()
-        )
-
-        tk.Button(
-            search,
-            text="SEARCH",
-            command=self.search_student,
-            bg=PRIMARY,
-            fg=WHITE,
-            activebackground=PRIMARY_HOVER,
-            relief="flat",
-            cursor="hand2",
-            font=("Segoe UI", 10, "bold"),
-            padx=20,
-            pady=10
-        ).pack(
-            side="left",
-            padx=10
-        )
-
-        tk.Button(
-            search,
-            text="CLEAR",
-            command=self.clear_search,
-            bg="#E5E7EB",
-            fg=TEXT_2,
-            activebackground="#D1D5DB",
-            relief="flat",
-            cursor="hand2",
-            font=("Segoe UI", 10, "bold"),
-            padx=15,
-            pady=10
-        ).pack(
-            side="left",
-            padx=(0, 12)
-        )
-
-        # =================================================
-        # LIST
-        # =================================================
-
-        self.list_frame = tk.Frame(
-            outer,
-            bg=SURFACE
-        )
-
-        self.list_frame.pack(
-            fill="x",
-            padx=25,
-            pady=(0, 25)
-        )
-
-    # =====================================================
-    # IMAGE
-    # =====================================================
-
-    def select_image(self):
-
-        file_path = filedialog.askopenfilename(
-            filetypes=[
-                (
-                    "Image Files",
-                    "*.png *.jpg *.jpeg *.webp"
-                )
-            ]
-        )
-
-        if not file_path:
-            return
-
-        os.makedirs(
-            "student_photos",
-            exist_ok=True
-        )
-
-        filename = os.path.basename(
-            file_path
-        )
-
-        new_path = os.path.join(
-            "student_photos",
-            filename
-        )
-
-        if os.path.abspath(file_path) != os.path.abspath(new_path):
-
-            shutil.copy2(
-                file_path,
-                new_path
-            )
-
-        self.selected_image_path = new_path
-
-        img = Image.open(
-            new_path
-        )
-
-        img.thumbnail(
-            (150, 150)
-        )
-
-        photo = ImageTk.PhotoImage(
-            img
-        )
-
-        self.preview_label.configure(
-            image=photo,
-            text=""
-        )
-
-        self.preview_label.image = photo
-
-        self.update_scroll_region()
-
-    # =====================================================
-    # VALIDATION
-    # =====================================================
-
-    def validate_fields(self):
-
-        required_fields = {
-
-            "Student ID":
-                self.sid.get().strip(),
-
-            "Roll Number":
-                self.roll.get().strip(),
-
-            "Student Full Name":
-                self.name.get().strip(),
-
-            "Father Name":
-                self.father_name.get().strip(),
-
-            "Gender":
-                self.gender.get().strip(),
-
-            "College Name":
-                self.college.get().strip(),
-
-            "Branch Name":
-                self.branch.get().strip(),
-
-            "Semester":
-                self.semester.get().strip(),
-
-            "Email ID":
-                self.email.get().strip(),
-
-            "Student Mobile Number":
-                self.mobile.get().strip()
-        }
-
-        missing = []
-
-        for field, value in required_fields.items():
-
-            if not value:
-
-                missing.append(
-                    field
-                )
-
-        if not self.selected_image_path:
-
-            missing.append(
-                "Student Photo"
-            )
-
-        if missing:
-
-            messagebox.showwarning(
-                "Validation Failed",
-                "Please complete these required fields:\n\n"
-                + "\n".join(
-                    "• " + item
-                    for item in missing
-                )
-            )
-
+import csv
+import json
+import hashlib
+import secrets
+import datetime
+import threading
+import traceback
+import math
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog, simpledialog
+
+try:
+    from pymongo import MongoClient
+    MONGO_OK = True
+except Exception:
+    MONGO_OK = False
+
+try:
+    import numpy as np
+    from sklearn.ensemble import IsolationForest
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.impute import SimpleImputer
+    SKLEARN_OK = True
+except Exception:
+    np = None
+    IsolationForest = StandardScaler = SimpleImputer = None
+    SKLEARN_OK = False
+
+try:
+    import torch
+    from torch import nn
+    TORCH_OK = True
+except Exception:
+    torch = nn = None
+    TORCH_OK = False
+
+
+MONGO_URI = os.environ.get("SMS_MONGO_URI", "mongodb://localhost:27017")
+DB_NAME = os.environ.get("SMS_DB", "student_management")
+
+# ------------------------------- dark dev theme -------------------------------
+DARK = "#0a0f1e"
+PANEL = "#131a2e"
+PANEL_2 = "#0f1526"
+LINE = "#243050"
+TEXT = "#e6ecff"
+MUT = "#8b97b8"
+CYAN = "#22d3ee"
+PURPLE = "#a855f7"
+GREEN = "#22c55e"
+AMBER = "#f59e0b"
+RED = "#ef4444"
+SIDEBAR_W = 240
+
+NAV = [
+    ("overview", "Overview", "◈"),
+    ("users", "Users", "◉"),
+    ("students", "Students", "◍"),
+    ("audit", "Audit Log", "◷"),
+    ("broadcast", "Broadcast", "◎"),
+    ("flags", "Feature Flags", "⚑"),
+    ("data", "Data Tools", "▤"),
+    ("console", "Query Console", "⌘"),
+    ("ml", "AI / ML Insights", "✦"),
+]
+
+COLLECTIONS = ["users", "students", "teachers", "admissions", "courses", "branches",
+               "attendance", "fees", "examinations", "results", "timetable",
+               "notifications", "settings", "admins"]
+
+
+# --------------------------------- helpers ------------------------------------
+def hash_pwd(p, salt=None):
+    salt = salt or secrets.token_hex(16)
+    return {"salt": salt, "hash": hashlib.pbkdf2_hmac(
+        "sha256", p.encode(), salt.encode(), 180_000).hex()}
+
+
+def verify_pwd(p, rec):
+    try:
+        if not rec:
             return False
+        if isinstance(rec, str):
+            return secrets.compare_digest(p, rec)
+        return bool(rec.get("salt") and secrets.compare_digest(
+            hash_pwd(p, rec["salt"])["hash"], rec["hash"]))
+    except Exception:
+        return False
 
-        messagebox.showinfo(
-            "AI Validation",
-            "All compulsory fields are properly filled."
-        )
 
-        return True
+def now_iso():
+    return datetime.datetime.now().isoformat()
 
-    # =====================================================
-    # CRUD
-    # =====================================================
 
-    def enable_crud(self):
+class MemCol:
+    def __init__(self):
+        self.d = {}
 
-        messagebox.showinfo(
-            "CRUD OPERATIONS",
-            "Create, Read, Update & Delete Operations "
-            "Enabled Successfully."
-        )
+    def find_one(self, q):
+        if "_id" in q:
+            direct = self.d.get(str(q["_id"]))
+            if direct is not None:
+                return direct
+            return next((v for k, v in self.d.items() if str(k) == str(q["_id"])), None)
+        for v in self.d.values():
+            if all(v.get(k) == val for k, val in q.items()):
+                return v
+        return None
 
-    # =====================================================
-    # ADD STUDENT
-    # =====================================================
+    def find(self, q=None, limit=0):
+        out = [v for v in self.d.values() if all(v.get(k) == val for k, val in (q or {}).items())]
+        return out[:limit] if limit else out
 
-    def add_student(self):
+    def insert_one(self, doc):
+        doc = dict(doc)
+        doc.setdefault("_id", f"m-{secrets.token_hex(6)}")
+        self.d[doc["_id"]] = doc
 
-        if not self.validate_fields():
+    def update_one(self, q, upd):
+        r = self.find_one(q)
+        if r:
+            r.update(upd.get("$set", {}))
 
+    def delete_one(self, q):
+        r = self.find_one(q)
+        if r:
+            self.d.pop(r["_id"], None)
+
+    def delete_many(self, q=None):
+        if not q:
+            self.d.clear()
             return
+        for r in self.find(q):
+            self.d.pop(r["_id"], None)
 
-        sid = self.sid.get().strip()
-        roll = self.roll.get().strip()
+    def count_documents(self, q=None):
+        return len(self.find(q))
 
-        if students_collection.find_one({
-            "sid": sid
-        }):
+    def create_index(self, *a, **k):
+        pass
 
-            messagebox.showerror(
-                "Duplicate Student ID",
-                "This Student ID already exists."
-            )
 
-            return
-
-        if students_collection.find_one({
-            "roll": roll
-        }):
-
-            messagebox.showerror(
-                "Duplicate Roll Number",
-                "This Roll Number already exists."
-            )
-
-            return
-
-        semester = self.semester.get()
-
-        year = ""
-
-        if semester in ["1", "2"]:
-            year = "1st Year"
-
-        elif semester in ["3", "4"]:
-            year = "2nd Year"
-
-        elif semester in ["5", "6"]:
-            year = "3rd Year"
-
-        elif semester in ["7", "8"]:
-            year = "4th Year"
-
-        data = {
-
-            "sid": sid,
-
-            "roll": roll,
-
-            "name":
-                self.name.get().strip(),
-
-            "father_name":
-                self.father_name.get().strip(),
-
-            "mother_name":
-                self.mother_name.get().strip(),
-
-            "gender":
-                self.gender.get().strip(),
-
-            "dob":
-                self.dob.get().strip(),
-
-            "age":
-                self.age.get().strip(),
-
-            "address":
-                self.address.get().strip(),
-
-            "marital_status":
-                self.marital_status.get().strip(),
-
-            "college":
-                self.college.get().strip(),
-
-            "branch":
-                self.branch.get().strip(),
-
-            "semester":
-                semester,
-
-            "year":
-                year,
-
-            "course":
-                self.course.get().strip(),
-
-            "admission_date":
-                self.admission_date.get().strip(),
-
-            "exit_date":
-                self.exit_date.get().strip(),
-
-            "blood_group":
-                self.blood_group.get().strip(),
-
-            "email":
-                self.email.get().strip(),
-
-            "linkedin":
-                self.linkedin.get().strip(),
-
-            "mobile":
-                self.mobile.get().strip(),
-
-            "parent_mobile":
-                self.parent_mobile.get().strip(),
-
-            "department":
-                self.department.get().strip(),
-
-            "photo":
-                self.selected_image_path,
-
-            "created_at":
-                datetime.now()
-        }
-
-        try:
-
-            students_collection.insert_one(
-                data
-            )
-
-            messagebox.showinfo(
-                "Success",
-                "Student Added Successfully."
-            )
-
-            self.load_students()
-
-        except Exception as e:
-
-            messagebox.showerror(
-                "Database Error",
-                str(e)
-            )
-
-    # =====================================================
-    # DELETE
-    # =====================================================
-
-    def delete_student(self):
-
-        roll = self.roll.get().strip()
-
-        if not roll:
-
-            messagebox.showwarning(
-                "Missing Roll Number",
-                "Enter the student's Roll Number."
-            )
-
-            return
-
-        student = students_collection.find_one({
-            "roll": roll
-        })
-
-        if not student:
-
-            messagebox.showwarning(
-                "Student Not Found",
-                "No student found with this Roll Number."
-            )
-
-            return
-
-        confirm = messagebox.askyesno(
-            "Confirm Delete",
-            f"Delete student '{student.get('name', '')}'?"
-        )
-
-        if not confirm:
-            return
-
-        students_collection.delete_one({
-            "_id": student["_id"]
-        })
-
-        messagebox.showinfo(
-            "Deleted",
-            "Student Deleted Successfully."
-        )
-
-        self.load_students()
-
-    # =====================================================
-    # SEARCH
-    # =====================================================
-
-    def search_student(self):
-
-        keyword = self.search_var.get().strip()
-
-        if not keyword:
-
-            self.load_students()
-
-            return
-
-        search_by = self.search_type.get()
-
-        try:
-
-            students = list(
-                students_collection.find({
-                    search_by: {
-                        "$regex": keyword,
-                        "$options": "i"
-                    }
-                })
-            )
-
-            self.display_students(
-                students
-            )
-
-        except Exception as e:
-
-            messagebox.showerror(
-                "Search Error",
-                str(e)
-            )
-
-    # =====================================================
-    # CLEAR SEARCH
-    # =====================================================
-
-    def clear_search(self):
-
-        self.search_var.set("")
-
-        self.load_students()
-
-    # =====================================================
-    # LOAD
-    # =====================================================
-
-    def load_students(self):
-
-        try:
-
-            students = list(
-                students_collection.find()
-            )
-
-            self.display_students(
-                students
-            )
-
-        except Exception as e:
-
-            messagebox.showerror(
-                "Database Error",
-                str(e)
-            )
-
-    # =====================================================
-    # DISPLAY STUDENTS
-    # =====================================================
-
-    def display_students(self, students):
-
-        for widget in self.list_frame.winfo_children():
-
-            widget.destroy()
-
-        # =================================================
-        # HEADER / COUNT
-        # =================================================
-
-        top = tk.Frame(
-            self.list_frame,
-            bg=SURFACE
-        )
-
-        top.pack(
-            fill="x",
-            pady=(0, 12)
-        )
-
-        tk.Label(
-            top,
-            text=f"{len(students)} Students",
-            bg=SURFACE,
-            fg=TEXT,
-            font=("Segoe UI", 13, "bold")
-        ).pack(
-            side="left"
-        )
-
-        tk.Label(
-            top,
-            text="Complete student records",
-            bg=SURFACE,
-            fg=MUTED,
-            font=("Segoe UI", 9)
-        ).pack(
-            side="left",
-            padx=10
-        )
-
-        # =================================================
-        # EMPTY
-        # =================================================
-
-        if not students:
-
-            empty = tk.Frame(
-                self.list_frame,
-                bg=SURFACE_2,
-                highlightbackground=BORDER,
-                highlightthickness=1
-            )
-
-            empty.pack(
-                fill="x",
-                pady=10
-            )
-
-            tk.Label(
-                empty,
-                text="No student records found",
-                bg=SURFACE_2,
-                fg=TEXT,
-                font=("Segoe UI", 15, "bold")
-            ).pack(
-                pady=(30, 4)
-            )
-
-            tk.Label(
-                empty,
-                text="Add a student or change your search.",
-                bg=SURFACE_2,
-                fg=MUTED,
-                font=("Segoe UI", 10)
-            ).pack(
-                pady=(0, 30)
-            )
-
-            self.parent.after(
-                50,
-                self.update_scroll_region
-            )
-
-            return
-
-        # =================================================
-        # STUDENT CARDS
-        # =================================================
-
-        for student in students:
-
-            self.create_student_card(
-                student
-            )
-
-        self.parent.after(
-            50,
-            self.update_scroll_region
-        )
-
-    # =====================================================
-    # STUDENT CARD
-    # =====================================================
-
-    def create_student_card(self, student):
-
-        card = tk.Frame(
-            self.list_frame,
-            bg=WHITE,
-            highlightbackground=BORDER,
-            highlightthickness=1
-        )
-
-        card.pack(
-            fill="x",
-            pady=7
-        )
-
-        # =================================================
-        # PHOTO
-        # =================================================
-
-        photo_box = tk.Frame(
-            card,
-            bg=WHITE
-        )
-
-        photo_box.pack(
-            side="left",
-            padx=18,
-            pady=18
-        )
-
-        path = student.get(
-            "photo"
-        )
-
-        if path and os.path.exists(path):
-
+class DB:
+    def __init__(self):
+        self.online = False
+        self.client = None
+        self._mem = {}
+        if MONGO_OK:
             try:
-
-                img = Image.open(
-                    path
-                )
-
-                img.thumbnail(
-                    (100, 100)
-                )
-
-                photo = ImageTk.PhotoImage(
-                    img
-                )
-
-                label = tk.Label(
-                    photo_box,
-                    image=photo,
-                    bg=WHITE,
-                    cursor="hand2"
-                )
-
-                label.image = photo
-
-                label.pack()
-
-                label.bind(
-                    "<Button-1>",
-                    lambda e,
-                    p=path:
-                    self.show_large_image(p)
-                )
-
+                self.client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
+                self.client.admin.command("ping")
+                self.db = self.client[DB_NAME]
+                self.online = True
             except Exception:
+                self.online = False
 
-                self.photo_placeholder(
-                    photo_box
-                )
+    def col(self, n):
+        return self.db[n] if self.online else self._mem.setdefault(n, MemCol())
 
-        else:
+    def close(self):
+        try:
+            if self.client:
+                self.client.close()
+        except Exception:
+            pass
 
-            self.photo_placeholder(
-                photo_box
-            )
 
-        # =================================================
-        # MAIN INFO
-        # =================================================
+# --------------------------------- widgets ------------------------------------
+class Card(tk.Frame):
+    def __init__(self, master, pad=16, **kw):
+        super().__init__(master, bg=PANEL, highlightthickness=1,
+                         highlightbackground=LINE, **kw)
+        self.body = tk.Frame(self, bg=PANEL)
+        self.body.pack(fill="both", expand=True, padx=pad, pady=pad)
 
-        info = tk.Frame(
-            card,
-            bg=WHITE
-        )
 
-        info.pack(
-            side="left",
-            fill="both",
-            expand=True,
-            padx=10,
-            pady=18
-        )
+class ScrollArea(tk.Frame):
+    def __init__(self, master):
+        super().__init__(master, bg=DARK)
+        self.canvas = tk.Canvas(self, bg=DARK, highlightthickness=0, bd=0)
+        bar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=bar.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        bar.pack(side="right", fill="y")
+        self.inner = tk.Frame(self.canvas, bg=DARK)
+        self._win = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
+        self.inner.bind("<Configure>",
+                        lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>",
+                         lambda e: self.canvas.itemconfigure(self._win, width=e.width))
 
-        # Name
-        tk.Label(
-            info,
-            text=student.get("name", ""),
-            bg=WHITE,
-            fg=TEXT,
-            font=("Segoe UI", 15, "bold")
-        ).pack(
-            anchor="w"
-        )
+    def scroll(self, u):
+        self.canvas.yview_scroll(int(u), "units")
 
-        # Identity
-        identity = tk.Frame(
-            info,
-            bg=WHITE
-        )
 
-        identity.pack(
-            fill="x",
-            pady=(6, 10)
-        )
+# ================================ ADMIN PANEL =================================
+class AdminPanel(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("SMS — Developer Console")
+        self.geometry("1440x900")
+        self.minsize(1050, 650)
+        self.configure(bg=DARK)
+        try:
+            self.state("zoomed")
+        except tk.TclError:
+            pass
 
-        self.info_badge(
-            identity,
-            f"SID  {student.get('sid', '')}"
-        )
+        self.db = DB()
+        self.admin = None
+        self.active = None
+        self.pages = {}
+        self.nav_buttons = {}
+        self.acc = {}
+        self.alive = True
+        self.preview = {}
 
-        self.info_badge(
-            identity,
-            f"ROLL  {student.get('roll', '')}"
-        )
+        self._style()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._ensure_admin()
+        self._show_login()
 
-        self.info_badge(
-            identity,
-            f"SEM  {student.get('semester', '')}"
-        )
+    # ------------------------------- styling ---------------------------------
+    def _style(self):
+        s = ttk.Style(self)
+        try:
+            s.theme_use("clam")
+        except Exception:
+            pass
+        s.configure("Treeview", background=PANEL_2, fieldbackground=PANEL_2,
+                    foreground=TEXT, rowheight=32, borderwidth=0, font=("Segoe UI", 9))
+        s.configure("Treeview.Heading", padding=(8, 9))
+        s.configure("TCombobox", fieldbackground=PANEL_2, background=PANEL_2,
+                    foreground=TEXT, arrowcolor=CYAN)
+        s.configure("Treeview.Heading", background=PANEL, foreground=CYAN,
+                    font=("Consolas", 9, "bold"), borderwidth=0)
+        s.map("Treeview", background=[("selected", "#1e2b4a")], foreground=[("selected", TEXT)])
+        s.configure("TScrollbar", background=LINE, troughcolor=DARK, borderwidth=0)
 
-        # Details grid
-        details = tk.Frame(
-            info,
-            bg=WHITE
-        )
+    # --------------------------- admin bootstrap ------------------------------
+    def _ensure_admin(self):
+        """Guarantee the default developer account exists AND is usable."""
+        email = "dev@admin.local"
+        try:
+            rec = self.db.col("admins").find_one({"email": email})
+            if rec is None:
+                self.db.col("admins").insert_one({
+                    "email": email, "name": "Developer",
+                    "password": hash_pwd("Dev@12345"), "created_at": now_iso(),
+                })
+                return
+            pwd = rec.get("password")
+            if not isinstance(pwd, dict) or not pwd.get("salt"):
+                self.db.col("admins").update_one(
+                    {"email": email}, {"$set": {"password": hash_pwd("Dev@12345")}})
+        except Exception:
+            traceback.print_exc()
 
-        details.pack(
-            fill="x"
-        )
+        try:
+            if not self.db.col("settings").find_one({"_id": "app"}):
+                self.db.col("settings").insert_one({
+                    "_id": "app", "maintenance": False,
+                    "allow_registration": True, "otp_required": True,
+                })
+        except Exception:
+            pass
 
-        self.detail(
-            details,
-            "Father",
-            student.get(
-                "father_name",
-                ""
-            ),
-            0,
-            0
-        )
+    # -------------------------------- login ----------------------------------
+    def _show_login(self):
+        self.login_frame = tk.Frame(self, bg=DARK)
+        self.login_frame.pack(fill="both", expand=True)
 
-        self.detail(
-            details,
-            "Branch",
-            student.get(
-                "branch",
-                ""
-            ),
-            0,
-            1
-        )
+        tk.Label(self.login_frame, text="◈  SMS DEVELOPER CONSOLE", bg=DARK, fg=CYAN,
+                 font=("Consolas", 20, "bold")).pack(pady=(60, 4))
+        tk.Label(self.login_frame, text="High-privilege control over login and dashboard",
+                 bg=DARK, fg=MUT, font=("Segoe UI", 9)).pack()
 
-        self.detail(
-            details,
-            "College",
-            student.get(
-                "college",
-                ""
-            ),
-            0,
-            2
-        )
+        card = Card(self.login_frame)
+        card.configure(width=380, height=310)
+        card.pack(pady=24)
+        card.pack_propagate(False)
 
-        self.detail(
-            details,
-            "Mobile",
-            student.get(
-                "mobile",
-                ""
-            ),
-            1,
-            0
-        )
+        tk.Label(card.body, text="EMAIL", bg=PANEL, fg=MUT,
+                 font=("Consolas", 8, "bold")).pack(anchor="w")
+        self.l_email = tk.Entry(card.body, bg=PANEL_2, fg=TEXT, insertbackground=CYAN,
+                                relief="flat", font=("Consolas", 11))
+        self.l_email.pack(fill="x", ipady=7, pady=(2, 10))
+        self.l_email.insert(0, "dev@admin.local")
 
-        self.detail(
-            details,
-            "Email",
-            student.get(
-                "email",
-                ""
-            ),
-            1,
-            1
-        )
+        tk.Label(card.body, text="PASSWORD", bg=PANEL, fg=MUT,
+                 font=("Consolas", 8, "bold")).pack(anchor="w")
+        self.l_pass = tk.Entry(card.body, bg=PANEL_2, fg=TEXT, insertbackground=CYAN,
+                               relief="flat", font=("Consolas", 11), show="●")
+        self.l_pass.pack(fill="x", ipady=7, pady=(2, 10))
+        self.l_pass.bind("<Return>", lambda _e: self._login())
 
-        self.detail(
-            details,
-            "Department",
-            student.get(
-                "department",
-                ""
-            ),
-            1,
-            2
-        )
+        self.l_status = tk.Label(card.body, text="", bg=PANEL, fg=RED,
+                                 font=("Consolas", 8), wraplength=330, justify="left")
+        self.l_status.pack(anchor="w")
 
-        self.detail(
-            details,
-            "Gender",
-            student.get(
-                "gender",
-                ""
-            ),
-            2,
-            0
-        )
+        tk.Button(card.body, text="AUTHENTICATE", command=self._login, bg=CYAN, fg=DARK,
+                  bd=0, cursor="hand2", font=("Consolas", 10, "bold")).pack(
+            fill="x", pady=(10, 4), ipady=8)
 
-        self.detail(
-            details,
-            "DOB",
-            student.get(
-                "dob",
-                ""
-            ),
-            2,
-            1
-        )
+        tk.Label(self.login_frame, text="Use your configured developer administrator credentials.",
+                 bg=DARK, fg=MUT, font=("Consolas", 8)).pack()
+        tk.Button(self.login_frame, text="Reset default dev account",
+                  command=self._repair_admin, bg=PANEL, fg=AMBER, bd=0, cursor="hand2",
+                  font=("Consolas", 8)).pack(pady=4)
+        tk.Label(self.login_frame, text=f"DB: {'online' if self.db.online else 'offline (memory)'}",
+                 bg=DARK, fg=GREEN if self.db.online else RED,
+                 font=("Consolas", 8)).pack(pady=6)
 
-        self.detail(
-            details,
-            "Blood Group",
-            student.get(
-                "blood_group",
-                ""
-            ),
-            2,
-            2
-        )
-
-        # =================================================
-        # RIGHT SIDE
-        # =================================================
-
-        right = tk.Frame(
-            card,
-            bg=WHITE
-        )
-
-        right.pack(
-            side="right",
-            padx=20,
-            pady=18,
-            anchor="n"
-        )
-
-        tk.Label(
-            right,
-            text=student.get(
-                "year",
-                ""
-            ),
-            bg="#F5F3FF",
-            fg=PRIMARY,
-            font=("Segoe UI", 10, "bold"),
-            padx=12,
-            pady=7
-        ).pack()
-
-        # =================================================
-        # ADDRESS
-        # =================================================
-
-        address = student.get(
-            "address",
-            ""
-        )
-
-        if address:
-
-            tk.Label(
-                info,
-                text=f"Address: {address}",
-                bg=WHITE,
-                fg=MUTED,
-                font=("Segoe UI", 9),
-                wraplength=850,
-                justify="left"
-            ).pack(
-                anchor="w",
-                pady=(12, 0)
-            )
-
-    # =====================================================
-    # BADGE
-    # =====================================================
-
-    def info_badge(
-        self,
-        parent,
-        text
-    ):
-
-        tk.Label(
-            parent,
-            text=text,
-            bg="#F3F4F6",
-            fg=TEXT_2,
-            font=("Segoe UI", 8, "bold"),
-            padx=9,
-            pady=5
-        ).pack(
-            side="left",
-            padx=(0, 6)
-        )
-
-    # =====================================================
-    # DETAIL
-    # =====================================================
-
-    def detail(
-        self,
-        parent,
-        title,
-        value,
-        row,
-        column
-    ):
-
-        box = tk.Frame(
-            parent,
-            bg=WHITE
-        )
-
-        box.grid(
-            row=row,
-            column=column,
-            sticky="w",
-            padx=(0, 35),
-            pady=4
-        )
-
-        tk.Label(
-            box,
-            text=title.upper(),
-            bg=WHITE,
-            fg=LIGHT_TEXT,
-            font=("Segoe UI", 7, "bold")
-        ).pack(
-            anchor="w"
-        )
-
-        tk.Label(
-            box,
-            text=value or "—",
-            bg=WHITE,
-            fg=TEXT_2,
-            font=("Segoe UI", 9)
-        ).pack(
-            anchor="w"
-        )
-
-    # =====================================================
-    # PHOTO PLACEHOLDER
-    # =====================================================
-
-    def photo_placeholder(self, parent):
-
-        tk.Label(
-            parent,
-            text="NO\nPHOTO",
-            bg="#F3F4F6",
-            fg=LIGHT_TEXT,
-            width=12,
-            height=6,
-            font=("Segoe UI", 8, "bold")
-        ).pack()
-
-    # =====================================================
-    # LARGE PHOTO
-    # =====================================================
-
-    def show_large_image(self, path):
-
-        if not os.path.exists(path):
-
-            messagebox.showerror(
-                "Image Error",
-                "Student photo could not be found."
-            )
-
+    def _login(self):
+        email = self.l_email.get().strip().lower()
+        pwd = self.l_pass.get()
+        if not email or not pwd:
+            self.l_status.configure(text="Enter both email and password.")
             return
+        rec = self.db.col("admins").find_one({"email": email})
+        if not rec:
+            self.l_status.configure(
+                text=f"No admin with '{email}'. Default is dev@admin.local")
+            return
+        if not verify_pwd(pwd, rec.get("password", {})):
+            self.l_status.configure(text="Password incorrect for this admin.")
+            return
+        self.admin = rec
+        self.login_frame.destroy()
+        self._build_shell()
+        self.show_page("overview")
 
-        top = tk.Toplevel(
-            self.parent
+    def _repair_admin(self):
+        try:
+            self.db.col("admins").delete_one({"email": "dev@admin.local"})
+        except Exception:
+            pass
+        self._ensure_admin()
+        self.l_email.delete(0, "end")
+        self.l_email.insert(0, "dev@admin.local")
+        self.l_pass.delete(0, "end")
+        self.l_pass.insert(0, "Dev@12345")
+        self.l_status.configure(text="Default dev account reset. Press AUTHENTICATE.",
+                                fg=GREEN)
+
+    # -------------------------------- shell ----------------------------------
+    def _build_shell(self):
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        side = tk.Frame(self, bg=PANEL_2, width=SIDEBAR_W)
+        side.grid(row=0, column=0, sticky="ns")
+        side.grid_propagate(False)
+
+        brand = tk.Frame(side, bg=PANEL_2)
+        brand.pack(fill="x", padx=16, pady=18)
+        tk.Label(brand, text="◈", bg=PANEL_2, fg=CYAN, font=("Consolas", 20, "bold")).pack(side="left")
+        tk.Label(brand, text="CONSOLE", bg=PANEL_2, fg=TEXT,
+                 font=("Consolas", 12, "bold")).pack(side="left", padx=8)
+
+        tk.Frame(side, bg=LINE, height=1).pack(fill="x", padx=12)
+
+        for key, label, icon in NAV:
+            row = tk.Frame(side, bg=PANEL_2, cursor="hand2")
+            row.pack(fill="x", padx=8, pady=1)
+            inner = tk.Frame(row, bg=PANEL_2)
+            inner.pack(fill="x", padx=8, pady=7)
+            ic = tk.Label(inner, text=icon, bg=PANEL_2, fg=MUT, font=("Consolas", 11))
+            ic.pack(side="left")
+            tx = tk.Label(inner, text=label, bg=PANEL_2, fg=MUT, font=("Segoe UI", 10))
+            tx.pack(side="left", padx=10)
+            for w in (row, inner, ic, tx):
+                w.bind("<Button-1>", lambda _e, k=key: self.show_page(k))
+                w.bind("<Enter>", lambda _e, r=row: self._hover(r, True))
+                w.bind("<Leave>", lambda _e, r=row: self._hover(r, False))
+            self.nav_buttons[key] = (row, inner, ic, tx)
+
+        bottom = tk.Frame(side, bg=PANEL_2)
+        bottom.pack(side="bottom", fill="x", padx=12, pady=14)
+        tk.Button(bottom, text="⏻  Sign out", command=self._signout, bg=RED, fg="white",
+                  bd=0, cursor="hand2", font=("Consolas", 9, "bold"), pady=7).pack(fill="x")
+
+        right = tk.Frame(self, bg=DARK)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.rowconfigure(1, weight=1)
+        right.columnconfigure(0, weight=1)
+
+        top = tk.Frame(right, bg=PANEL, height=58)
+        top.grid(row=0, column=0, sticky="ew")
+        top.grid_propagate(False)
+        tk.Label(top, text="Developer Console", bg=PANEL, fg=TEXT,
+                 font=("Consolas", 12, "bold")).pack(side="left", padx=20)
+        self.db_badge = tk.Label(top, text="DB " + ("ONLINE" if self.db.online else "OFFLINE"),
+                                 bg=PANEL, fg=GREEN if self.db.online else RED,
+                                 font=("Consolas", 9, "bold"))
+        self.db_badge.pack(side="right", padx=18)
+        tk.Label(top, text=self.admin.get("name", "dev"), bg=PANEL, fg=CYAN,
+                 font=("Consolas", 9)).pack(side="right", padx=8)
+
+        self.host = tk.Frame(right, bg=DARK)
+        self.host.grid(row=1, column=0, sticky="nsew")
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind_all(seq, self._wheel)
+
+    def _hover(self, row, on):
+        key = next((k for k, v in self.nav_buttons.items() if v[0] is row), None)
+        if key == self.active:
+            return
+        color = "#1a2340" if on else PANEL_2
+        for w in self._walk(row):
+            try:
+                w.configure(bg=color)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _walk(w):
+        yield w
+        for c in w.winfo_children():
+            yield from AdminPanel._walk(c)
+
+    def _wheel(self, event):
+        area = self._area(event)
+        if area is None:
+            return "break"
+        if getattr(event, "num", None) == 4:
+            step = -1
+        elif getattr(event, "num", None) == 5:
+            step = 1
+        else:
+            d = getattr(event, "delta", 0)
+            if not d:
+                return "break"
+            thr = 120 if abs(d) >= 120 else 20
+            acc = self.acc.get(id(area), 0) + d
+            step = int(-acc / thr)
+            if step == 0:
+                self.acc[id(area)] = acc
+                if abs(acc) < thr:
+                    return "break"
+                step = -1 if acc > 0 else 1
+                acc = 0
+            self.acc[id(area)] = acc
+        area.scroll(step)
+        return "break"
+
+    def _area(self, event):
+        try:
+            w = self.winfo_containing(event.x_root, event.y_root)
+        except Exception:
+            return None
+        while w is not None:
+            if isinstance(w, ScrollArea):
+                return w
+            w = getattr(w, "master", None)
+        return None
+
+    # ------------------------------- routing ---------------------------------
+    def show_page(self, key, rebuild=False):
+        self.active = key
+        for k, (row, inner, ic, tx) in self.nav_buttons.items():
+            on = k == key
+            for w in (row, inner):
+                w.configure(bg="#1a2340" if on else PANEL_2)
+            ic.configure(bg="#1a2340" if on else PANEL_2, fg=CYAN if on else MUT)
+            tx.configure(bg="#1a2340" if on else PANEL_2, fg=TEXT if on else MUT,
+                         font=("Segoe UI", 10, "bold" if on else "normal"))
+
+        for w in self.host.winfo_children():
+            w.pack_forget()
+        page = self.pages.get(key)
+        if page is not None and rebuild:
+            page.destroy()
+            page = None
+        if page is None:
+            page = ScrollArea(self.host)
+            builder = getattr(self, f"_page_{key}", None)
+            if builder:
+                try:
+                    builder(page.inner)
+                except Exception:
+                    traceback.print_exc()
+                    tk.Label(page.inner, text="Page failed.", bg=DARK, fg=RED).pack(pady=20)
+            self.pages[key] = page
+        page.pack(fill="both", expand=True)
+
+    def _rebuild(self, key):
+        self.show_page(key, rebuild=True)
+
+    def _header(self, parent, title, sub=""):
+        h = tk.Frame(parent, bg=DARK)
+        h.pack(fill="x", padx=26, pady=(22, 10))
+        tk.Label(h, text=title, bg=DARK, fg=TEXT, font=("Consolas", 20, "bold")).pack(anchor="w")
+        if sub:
+            tk.Label(h, text=sub, bg=DARK, fg=MUT, font=("Segoe UI", 9)).pack(anchor="w")
+
+    def _table(self, parent, cols, height=12):
+        wrap = tk.Frame(parent, bg=PANEL)
+        tree = ttk.Treeview(wrap, columns=cols, show="headings", height=height)
+        for c in cols:
+            tree.heading(c, text=c)
+            tree.column(c, width=150, minwidth=90, anchor="w", stretch=True)
+        vs = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vs.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vs.grid(row=0, column=1, sticky="ns")
+        wrap.rowconfigure(0, weight=1)
+        wrap.columnconfigure(0, weight=1)
+        wrap.pack(fill="both", expand=True)
+        return tree
+
+    def _btn(self, parent, text, cmd, color=CYAN, fg=DARK):
+        b = tk.Button(parent, text=text, command=cmd, bg=color, fg=fg, bd=0,
+                      cursor="hand2", font=("Consolas", 9, "bold"), padx=10, pady=5)
+        b.pack(side="left", padx=(0, 8))
+        return b
+
+    def _search(self, parent, tree):
+        box = tk.Entry(parent, bg=PANEL_2, fg=TEXT, relief="flat", insertbackground=CYAN)
+        box.pack(side="right", ipady=5, ipadx=6)
+        box.bind("<KeyRelease>", lambda _e: self._filter(tree, box.get()))
+
+    def _filter(self, tree, term):
+        term = term.strip().lower()
+        items = getattr(tree, "_all_iids", None)
+        if items is None:
+            items = list(tree.get_children())
+            tree._all_iids = items
+        for iid in items:
+            try:
+                vals = " ".join(str(v).lower() for v in tree.item(iid, "values"))
+                if not term or term in vals:
+                    tree.reattach(iid, "", "end")
+                else:
+                    tree.detach(iid)
+            except tk.TclError:
+                continue
+
+    # ------------------------------- overview --------------------------------
+    def _page_overview(self, parent):
+        self._header(parent, "System Overview", "Live state of the platform.")
+        stats = tk.Frame(parent, bg=DARK)
+        stats.pack(fill="x", padx=26, pady=8)
+
+        for label, coll, color in (("Users", "users", CYAN), ("Students", "students", PURPLE),
+                                   ("Teachers", "teachers", GREEN), ("Audit events", "notifications", AMBER)):
+            c = Card(stats)
+            c.pack(side="left", fill="both", expand=True, padx=(0, 12))
+            tk.Label(c.body, text=label, bg=PANEL, fg=MUT, font=("Consolas", 8, "bold")).pack(anchor="w")
+            try:
+                count = self.db.col(coll).count_documents()
+            except Exception:
+                count = 0
+            tk.Label(c.body, text=str(count), bg=PANEL, fg=color,
+                     font=("Consolas", 24, "bold")).pack(anchor="w")
+
+        st = self._settings()
+        ctl = Card(parent)
+        ctl.pack(fill="x", padx=26, pady=10)
+        tk.Label(ctl.body, text="MASTER CONTROLS", bg=PANEL, fg=CYAN,
+                 font=("Consolas", 10, "bold")).pack(anchor="w")
+        row = tk.Frame(ctl.body, bg=PANEL)
+        row.pack(fill="x", pady=8)
+        self._toggle_btn(row, "Maintenance mode", st.get("maintenance", False),
+                         lambda: self._flip("maintenance"))
+        self._toggle_btn(row, "Allow registration", st.get("allow_registration", True),
+                         lambda: self._flip("allow_registration"))
+        self._toggle_btn(row, "Require OTP", st.get("otp_required", True),
+                         lambda: self._flip("otp_required"))
+
+        info = Card(parent)
+        info.pack(fill="x", padx=26, pady=10)
+        tk.Label(info.body, text="ENVIRONMENT", bg=PANEL, fg=CYAN,
+                 font=("Consolas", 10, "bold")).pack(anchor="w")
+        for k, v in (("Mongo URI", MONGO_URI), ("Database", DB_NAME),
+                     ("Driver", "pymongo" if MONGO_OK else "missing"),
+                     ("Connection", "online" if self.db.online else "offline")):
+            r = tk.Frame(info.body, bg=PANEL)
+            r.pack(fill="x", pady=2)
+            tk.Label(r, text=k, bg=PANEL, fg=MUT, width=16, anchor="w",
+                     font=("Consolas", 9)).pack(side="left")
+            tk.Label(r, text=str(v), bg=PANEL, fg=TEXT, font=("Consolas", 9)).pack(side="left")
+
+    def _toggle_btn(self, parent, label, on, cmd):
+        tk.Button(parent, text=("● " if on else "○ ") + label,
+                  command=cmd, bd=0, cursor="hand2", font=("Consolas", 9, "bold"),
+                  bg=("#123a2a" if on else PANEL_2), fg=(GREEN if on else MUT),
+                  padx=10, pady=6).pack(side="left", padx=(0, 8))
+
+    def _settings(self):
+        return self.db.col("settings").find_one({"_id": "app"}) or {}
+
+    def _flip(self, key):
+        st = self._settings()
+        self.db.col("settings").update_one({"_id": "app"}, {"$set": {key: not st.get(key, False)}})
+        self._log(f"Flag '{key}' set to {not st.get(key, False)}")
+        self._rebuild("overview")
+
+    def _log(self, text):
+        try:
+            self.db.col("notifications").insert_one(
+                {"text": "[admin] " + text, "roles": ["principal"], "at": now_iso()})
+        except Exception:
+            pass
+
+    # --------------------------------- users ---------------------------------
+    def _page_users(self, parent):
+        self._header(parent, "Users", "Manage every account.")
+        bar = tk.Frame(parent, bg=DARK)
+        bar.pack(fill="x", padx=26)
+        self._btn(bar, "Disable / Enable", self._toggle_user, AMBER, "#111")
+        self._btn(bar, "Reset password", self._reset_user, PURPLE, "white")
+        self._btn(bar, "Impersonate", self._impersonate, GREEN, "#111")
+        self._btn(bar, "Delete", self._delete_user, RED, "white")
+        self._btn(bar, "Refresh", lambda: self._load_users(), MUT, "#111")
+
+        card = Card(parent)
+        card.pack(fill="both", expand=True, padx=26, pady=10)
+        self.user_tree = self._table(card.body, ("Name", "Email", "Role", "Status", "Created"))
+        self.user_tree.pack(fill="both", expand=True)
+        sbox = tk.Frame(bar, bg=DARK)
+        sbox.pack(side="right", padx=(8, 0))
+        self._search(sbox, self.user_tree)
+        self._load_users()
+
+    def _load_users(self):
+        t = getattr(self, "user_tree", None)
+        if not t or not t.winfo_exists():
+            return
+        t.delete(*t.get_children())
+        docs = self.db.col("users").find(limit=500)
+        if not docs:
+            t.insert("", "end", values=("No users found", "", "", "", ""))
+            return
+        for u in docs:
+            t.insert("", "end", iid=str(u.get("_id")), values=(
+                u.get("name", ""), u.get("email", ""), u.get("category", ""),
+                u.get("account_status", "active"), str(u.get("created_at", ""))[:10]))
+        t._all_iids = list(t.get_children())
+
+    def _get_doc_by_iid(self, collection, iid):
+        if not iid:
+            return None
+        try:
+            return next((doc for doc in self.db.col(collection).find(limit=5000)
+                         if str(doc.get("_id")) == str(iid)), None)
+        except Exception:
+            return None
+
+    def _sel_user(self):
+        sel = self.user_tree.selection()
+        if not sel:
+            messagebox.showinfo("Users", "Select a user first.")
+            return None
+        return self._get_doc_by_iid("users", sel[0])
+
+    def _toggle_user(self):
+        u = self._sel_user()
+        if not u:
+            return
+        new = "disabled" if u.get("account_status", "active") == "active" else "active"
+        try:
+            self.db.col("users").update_one({"_id": u["_id"]}, {"$set": {"account_status": new}})
+            self._log(f"User {u.get('email')} set {new}")
+            self._load_users()
+        except Exception as exc:
+            messagebox.showerror("Update failed", str(exc))
+
+    def _reset_user(self):
+        u = self._sel_user()
+        if not u:
+            return
+        new = simpledialog.askstring("Reset password", f"New password for {u.get('email')}:",
+                                     parent=self, show="●")
+        if not new:
+            return
+        if len(new) < 8:
+            return messagebox.showwarning("Reset password", "Use at least 8 characters.")
+        try:
+            self.db.col("users").update_one({"_id": u["_id"]}, {"$set": {"password": hash_pwd(new)}})
+            self._log(f"Password reset for {u.get('email')}")
+            messagebox.showinfo("Reset", "Password updated.")
+        except Exception as exc:
+            messagebox.showerror("Reset failed", str(exc))
+
+    def _delete_user(self):
+        u = self._sel_user()
+        if not u:
+            return
+        if messagebox.askyesno("Delete", f"Permanently delete {u.get('email')}?"):
+            try:
+                self.db.col("users").delete_one({"_id": u["_id"]})
+                self._log(f"User deleted: {u.get('email')}")
+                self._load_users()
+            except Exception as exc:
+                messagebox.showerror("Delete failed", str(exc))
+
+    def _impersonate(self):
+        u = self._sel_user()
+        if not u:
+            return
+        account = dict(u)
+        account.pop("password", None)
+        account.pop("_id", None)
+        try:
+            import dashboard
+            self.withdraw()
+            dashboard.launch(account, app=self)
+        except Exception:
+            traceback.print_exc()
+            messagebox.showwarning("Dashboard", "dashboard.py not importable.")
+
+    # -------------------------------- students -------------------------------
+    def _page_students(self, parent):
+        self._header(parent, "Student Records", "Inspect and archive records.")
+        bar = tk.Frame(parent, bg=DARK)
+        bar.pack(fill="x", padx=26)
+        self._btn(bar, "Archive selected", self._archive_student, AMBER, "#111")
+        self._btn(bar, "Delete selected", self._delete_student, RED, "white")
+        self._btn(bar, "Refresh", self._load_students, MUT, "#111")
+        card = Card(parent)
+        card.pack(fill="both", expand=True, padx=26, pady=10)
+        self.stu_tree = self._table(card.body, ("Name", "Course", "Branch", "Sem", "Mobile", "Status"))
+        self.stu_tree.pack(fill="both", expand=True)
+        sbox = tk.Frame(bar, bg=DARK)
+        sbox.pack(side="right", padx=(8, 0))
+        self._search(sbox, self.stu_tree)
+        self._load_students()
+
+    def _load_students(self):
+        t = getattr(self, "stu_tree", None)
+        if not t or not t.winfo_exists():
+            return
+        t.delete(*t.get_children())
+        docs = self.db.col("students").find(limit=500)
+        if not docs:
+            t.insert("", "end", values=("No students", "", "", "", "", ""))
+            return
+        for d in docs:
+            t.insert("", "end", iid=str(d.get("_id")), values=(
+                d.get("name", ""), d.get("course", ""), d.get("branch", ""),
+                d.get("semester", ""), d.get("mobile", ""), d.get("status", "Active")))
+        t._all_iids = list(t.get_children())
+
+    def _archive_student(self):
+        sel = self.stu_tree.selection()
+        if not sel:
+            return
+        d = self._get_doc_by_iid("students", sel[0])
+        if not d:
+            return
+        rec = dict(d)
+        rec["leave_reason"] = "Archived by developer"
+        try:
+            self.db.col("student_archive").insert_one(rec)
+            self.db.col("students").delete_one({"_id": d["_id"]})
+        except Exception as exc:
+            messagebox.showerror("Archive failed", str(exc))
+            return
+        self._log(f"Student archived: {d.get('name')}")
+        self._load_students()
+
+    def _delete_student(self):
+        sel = self.stu_tree.selection()
+        if not sel:
+            return
+        if messagebox.askyesno("Delete", "Delete this student record?"):
+            d = self._get_doc_by_iid("students", sel[0])
+            if d:
+                self.db.col("students").delete_one({"_id": d["_id"]})
+            self._load_students()
+
+    # --------------------------------- audit ---------------------------------
+    def _page_audit(self, parent):
+        self._header(parent, "Audit Log", "Every recorded event.")
+        card = Card(parent)
+        card.pack(fill="both", expand=True, padx=26, pady=10)
+        tree = self._table(card.body, ("When", "Event", "Audience"), height=18)
+        tree.pack(fill="both", expand=True)
+        docs = self.db.col("notifications").find(limit=300)
+        for n in reversed(docs):
+            tree.insert("", "end", values=(str(n.get("at", ""))[:19].replace("T", " "),
+                                           n.get("text", ""), ", ".join(n.get("roles", []))))
+
+    # ------------------------------- broadcast -------------------------------
+    def _page_broadcast(self, parent):
+        self._header(parent, "Broadcast", "Push a notice to chosen audiences.")
+        card = Card(parent)
+        card.pack(fill="x", padx=26, pady=10)
+        tk.Label(card.body, text="MESSAGE", bg=PANEL, fg=MUT, font=("Consolas", 8, "bold")).pack(anchor="w")
+        msg = tk.Text(card.body, height=5, bg=PANEL_2, fg=TEXT, relief="flat",
+                      insertbackground=CYAN, font=("Segoe UI", 10))
+        msg.pack(fill="x", pady=6)
+        roles = tk.Frame(card.body, bg=PANEL)
+        roles.pack(anchor="w", pady=4)
+        self.role_vars = {}
+        for r in ("student", "teacher", "principal"):
+            var = tk.BooleanVar(value=True)
+            self.role_vars[r] = var
+            tk.Checkbutton(roles, text=r.title(), variable=var, bg=PANEL, fg=TEXT,
+                           selectcolor=PANEL_2, activebackground=PANEL,
+                           activeforeground=CYAN, font=("Consolas", 9)).pack(side="left", padx=6)
+
+        def send():
+            text = msg.get("1.0", "end").strip()
+            chosen = [r for r, v in self.role_vars.items() if v.get()]
+            if not text or not chosen:
+                return messagebox.showwarning("Broadcast", "Message and audience required.")
+            self.db.col("notifications").insert_one(
+                {"text": text, "roles": chosen, "at": now_iso()})
+            msg.delete("1.0", "end")
+            messagebox.showinfo("Broadcast", "Sent.")
+        tk.Button(card.body, text="SEND BROADCAST", command=send, bg=CYAN, fg=DARK, bd=0,
+                  cursor="hand2", font=("Consolas", 10, "bold")).pack(anchor="w", pady=8, ipadx=14, ipady=6)
+
+    # --------------------------------- flags ---------------------------------
+    def _page_flags(self, parent):
+        self._header(parent, "Feature Flags", "Impose behaviour on both apps.")
+        card = Card(parent)
+        card.pack(fill="x", padx=26, pady=10)
+        st = self._settings()
+        for key, desc in (("maintenance", "Block all logins with a maintenance notice."),
+                          ("allow_registration", "Allow new account creation."),
+                          ("otp_required", "Force email OTP on registration and reset.")):
+            row = tk.Frame(card.body, bg=PANEL)
+            row.pack(fill="x", pady=8)
+            on = bool(st.get(key, True))
+            tk.Button(row, text=("● ON" if on else "○ OFF"), width=6,
+                      command=lambda k=key: (self._flip(k), self._rebuild("flags")),
+                      bg=("#123a2a" if on else PANEL_2), fg=(GREEN if on else MUT),
+                      bd=0, cursor="hand2", font=("Consolas", 9, "bold")).pack(side="left")
+            col = tk.Frame(row, bg=PANEL)
+            col.pack(side="left", padx=12)
+            tk.Label(col, text=key, bg=PANEL, fg=TEXT, font=("Consolas", 10, "bold")).pack(anchor="w")
+            tk.Label(col, text=desc, bg=PANEL, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
+
+    # ------------------------------- data tools ------------------------------
+    def _page_data(self, parent):
+        self._header(parent, "Data Tools", "Export, seed and purge.")
+        card = Card(parent)
+        card.pack(fill="x", padx=26, pady=10)
+        tk.Label(card.body, text="EXPORT COLLECTION", bg=PANEL, fg=MUT,
+                 font=("Consolas", 8, "bold")).pack(anchor="w")
+        row = tk.Frame(card.body, bg=PANEL)
+        row.pack(anchor="w", pady=6)
+        self.exp_col = ttk.Combobox(row, values=COLLECTIONS, state="readonly", width=22)
+        self.exp_col.set("users")
+        self.exp_col.pack(side="left")
+        self._btn(row, "Export CSV", self._export_csv, CYAN)
+
+        purge = Card(parent)
+        purge.pack(fill="x", padx=26, pady=10)
+        tk.Label(purge.body, text="PURGE COLLECTION (keeps admins/settings)", bg=PANEL,
+                 fg=AMBER, font=("Consolas", 8, "bold")).pack(anchor="w")
+        prow = tk.Frame(purge.body, bg=PANEL)
+        prow.pack(anchor="w", pady=6)
+        self.purge_col = ttk.Combobox(prow, values=COLLECTIONS, state="readonly", width=22)
+        self.purge_col.set("notifications")
+        self.purge_col.pack(side="left")
+        self._btn(prow, "Purge", self._purge, RED, "white")
+
+    def _export_csv(self):
+        coll = self.exp_col.get()
+        docs = self.db.col(coll).find(limit=2000)
+        if not docs:
+            return messagebox.showinfo("Export", "Nothing to export.")
+        path = filedialog.asksaveasfilename(defaultextension=".csv",
+                                            initialfile=f"{coll}.csv",
+                                            filetypes=[("CSV", "*.csv")])
+        if not path:
+            return
+        try:
+            clean = [{k: (json.dumps(v, default=str) if isinstance(v, (dict, list, tuple)) else v)
+                      for k, v in d.items() if k not in ("photo_b64", "password", "salt", "hash")}
+                     for d in docs]
+            keys = sorted({k for d in clean for k in d})
+            with open(path, "w", newline="", encoding="utf-8") as fh:
+                w = csv.DictWriter(fh, fieldnames=keys)
+                w.writeheader()
+                w.writerows(clean)
+            messagebox.showinfo("Export", f"Saved {len(clean)} rows to {path}")
+        except Exception as exc:
+            messagebox.showerror("Export", str(exc))
+
+    def _purge(self):
+        coll = self.purge_col.get()
+        if coll in ("admins", "settings"):
+            return messagebox.showinfo("Purge", "Admins/settings are protected.")
+        if not messagebox.askyesno("Purge", f"Delete ALL documents in '{coll}'?"):
+            return
+        try:
+            n = self.db.col(coll).count_documents()
+            if self.db.online:
+                self.db.client[DB_NAME][coll].delete_many({})
+            else:
+                self.db.col(coll).delete_many({})
+            self._log(f"Purged {n} docs from {coll}")
+            messagebox.showinfo("Purge", f"Removed {n} documents.")
+        except Exception as exc:
+            messagebox.showerror("Purge", str(exc))
+
+    # ------------------------------- console ---------------------------------
+    def _page_console(self, parent):
+        self._header(parent, "Query Console", "Run a JSON filter against a collection.")
+        card = Card(parent)
+        card.pack(fill="x", padx=26, pady=10)
+        row = tk.Frame(card.body, bg=PANEL)
+        row.pack(fill="x")
+        self.q_col = ttk.Combobox(row, values=COLLECTIONS, state="readonly", width=20)
+        self.q_col.set("students")
+        self.q_col.pack(side="left")
+        self.q_text = tk.Entry(row, bg=PANEL_2, fg=TEXT, relief="flat", insertbackground=CYAN)
+        self.q_text.pack(side="left", fill="x", expand=True, padx=8, ipady=6)
+        self.q_text.insert(0, "{}")
+        self._btn(row, "Run", self._run_query, CYAN)
+
+        card2 = Card(parent)
+        card2.pack(fill="both", expand=True, padx=26, pady=10)
+        self.q_result = tk.Text(card2.body, bg=PANEL_2, fg=TEXT, relief="flat",
+                                font=("Consolas", 9), wrap="none")
+        self.q_result.pack(fill="both", expand=True)
+
+    def _run_query(self):
+        try:
+            flt = json.loads(self.q_text.get() or "{}")
+        except Exception as exc:
+            return messagebox.showerror("Query", f"Invalid JSON: {exc}")
+        try:
+            docs = self.db.col(self.q_col.get()).find(flt, limit=100)
+        except Exception as exc:
+            return messagebox.showerror("Query", str(exc))
+        self.q_result.delete("1.0", "end")
+        if not docs:
+            self.q_result.insert("end", "No documents.")
+            return
+        for i, d in enumerate(docs, 1):
+            clean = {k: v for k, v in d.items() if k != "photo_b64"}
+            self.q_result.insert("end", f"{i}. {json.dumps(clean, default=str)}\n")
+
+
+    # ----------------------------- AI / ML insights ----------------------------
+    def _page_ml(self, parent):
+        self._header(parent, "AI / ML Insights",
+                     "Run anomaly detection on real student records. No synthetic rows are generated.")
+        intro = Card(parent)
+        intro.pack(fill="x", padx=26, pady=8)
+        tk.Label(intro.body, text="INTELLIGENCE ENGINE", bg=PANEL, fg=CYAN,
+                 font=("Consolas", 10, "bold")).pack(anchor="w")
+        availability = (
+            f"scikit-learn: {'READY' if SKLEARN_OK else 'NOT INSTALLED'}   •   "
+            f"PyTorch: {'READY' if TORCH_OK else 'NOT INSTALLED'}"
         )
+        tk.Label(intro.body, text=availability, bg=PANEL, fg=GREEN if SKLEARN_OK else AMBER,
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(5, 2))
+        tk.Label(intro.body,
+                 text="Isolation Forest identifies unusual numeric student profiles. "
+                      "When PyTorch is installed, an autoencoder provides a second anomaly score.",
+                 bg=PANEL, fg=MUT, font=("Segoe UI", 9), wraplength=900,
+                 justify="left").pack(anchor="w", pady=(2, 8))
+        row = tk.Frame(intro.body, bg=PANEL)
+        row.pack(fill="x")
+        self._btn(row, "RUN ANALYSIS", self._run_ml_analysis, CYAN, DARK)
+        self._btn(row, "Refresh data", lambda: self._rebuild("ml"), PANEL_2, TEXT)
 
-        top.title(
-            "Student Photo Preview"
-        )
+        summary = Card(parent)
+        summary.pack(fill="x", padx=26, pady=8)
+        self.ml_summary = tk.Label(summary.body, text="No analysis has been run.",
+                                   bg=PANEL, fg=TEXT, font=("Segoe UI", 10),
+                                   justify="left", anchor="w")
+        self.ml_summary.pack(fill="x")
 
-        top.configure(
-            bg="#111827"
-        )
+        results = Card(parent)
+        results.pack(fill="both", expand=True, padx=26, pady=8)
+        tk.Label(results.body, text="ANOMALY REVIEW", bg=PANEL, fg=CYAN,
+                 font=("Consolas", 10, "bold")).pack(anchor="w", pady=(0, 8))
+        self.ml_tree = self._table(results.body,
+                                   ("Student", "Course", "Semester", "Risk score", "Model result"),
+                                   height=12)
+        self.ml_tree.pack(fill="both", expand=True)
 
-        top.geometry(
-            "540x620"
-        )
+    @staticmethod
+    def _numeric_value(value):
+        if isinstance(value, bool) or value is None:
+            return None
+        try:
+            number = float(str(value).replace(",", "").replace("%", "").strip())
+            return number if math.isfinite(number) else None
+        except Exception:
+            return None
 
-        img = Image.open(
-            path
-        )
+    def _run_ml_analysis(self):
+        if not SKLEARN_OK:
+            messagebox.showerror(
+                "Missing dependency",
+                "Install the ML dependencies in your active virtual environment:\n\n"
+                "python -m pip install -U numpy scikit-learn")
+            return
+        try:
+            records = self.db.col("students").find(limit=2000)
+            if len(records) < 10:
+                messagebox.showinfo("Not enough data",
+                                    f"Found {len(records)} student records. "
+                                    "At least 10 records are needed for meaningful anomaly detection.")
+                return
 
-        img.thumbnail(
-            (480, 500)
-        )
+            candidates = (
+                "semester", "age", "attendance", "attendance_percentage",
+                "attendance_percent", "marks", "percentage", "cgpa",
+                "gpa", "fee_due", "fees_due", "total_fees", "fees_paid",
+                "backlogs", "credits"
+            )
+            feature_names = []
+            for field in candidates:
+                values = [self._numeric_value(doc.get(field)) for doc in records]
+                if sum(v is not None for v in values) >= max(5, int(len(records) * 0.25)):
+                    if len({round(v, 6) for v in values if v is not None}) > 1:
+                        feature_names.append(field)
 
-        photo = ImageTk.PhotoImage(
-            img
-        )
+            if len(feature_names) < 2:
+                messagebox.showwarning(
+                    "Insufficient numeric data",
+                    "Student records need at least two varying numeric fields, such as "
+                    "semester, attendance, marks, CGPA or fee_due. Add real values and retry.")
+                return
 
-        label = tk.Label(
-            top,
-            image=photo,
-            bg="#111827"
-        )
+            matrix = []
+            valid_records = []
+            for doc in records:
+                row = [self._numeric_value(doc.get(field)) for field in feature_names]
+                if sum(v is not None for v in row) >= 2:
+                    matrix.append(row)
+                    valid_records.append(doc)
 
-        label.image = photo
+            if len(matrix) < 10:
+                messagebox.showinfo("Not enough complete data",
+                                    "Fewer than 10 usable student records remain after filtering.")
+                return
 
-        label.pack(
-            padx=20,
-            pady=20
-        )
+            imputer = SimpleImputer(strategy="median")
+            scaler = StandardScaler()
+            X = scaler.fit_transform(imputer.fit_transform(np.asarray(matrix, dtype=float)))
 
-        tk.Button(
-            top,
-            text="CLOSE",
-            command=top.destroy,
-            bg=PRIMARY,
-            fg=WHITE,
-            relief="flat",
-            cursor="hand2",
-            font=("Segoe UI", 10, "bold"),
-            padx=30,
-            pady=9
-        ).pack()
+            model = IsolationForest(
+                n_estimators=200, contamination="auto", random_state=42
+            )
+            model.fit(X)
+            sklearn_scores = -model.score_samples(X)
+            sklearn_flags = model.predict(X) == -1
 
-    # =====================================================
-    # DESTROY SCROLL BINDINGS
-    # =====================================================
+            torch_scores = None
+            torch_flags = None
+            if TORCH_OK and len(X) >= 20:
+                try:
+                    torch.manual_seed(42)
+                    torch.set_num_threads(1)
+                    tensor = torch.tensor(X, dtype=torch.float32)
+                    input_size = tensor.shape[1]
+                    hidden = max(2, min(16, input_size * 2))
+                    class AutoEncoder(nn.Module):
+                        def __init__(self):
+                            super().__init__()
+                            self.encoder = nn.Sequential(
+                                nn.Linear(input_size, hidden), nn.ReLU(),
+                                nn.Linear(hidden, max(2, input_size))
+                            )
+                            self.decoder = nn.Sequential(
+                                nn.Linear(max(2, input_size), hidden), nn.ReLU(),
+                                nn.Linear(hidden, input_size)
+                            )
 
-    def destroy(self):
+                        def forward(self, value):
+                            return self.decoder(self.encoder(value))
 
-        self.canvas.unbind_all(
-            "<MouseWheel>"
-        )
+                    network = AutoEncoder()
+                    optimizer = torch.optim.Adam(network.parameters(), lr=0.01)
+                    loss_fn = nn.MSELoss()
+                    network.train()
+                    for _ in range(60):
+                        optimizer.zero_grad()
+                        reconstructed = network(tensor)
+                        loss = loss_fn(reconstructed, tensor)
+                        loss.backward()
+                        optimizer.step()
+                    network.eval()
+                    with torch.no_grad():
+                        errors = torch.mean((network(tensor) - tensor) ** 2, dim=1)
+                        torch_scores = errors.cpu().numpy()
+                    threshold = float(np.quantile(torch_scores, 0.95))
+                    torch_flags = torch_scores >= threshold
+                except Exception:
+                    torch_scores = torch_flags = None
 
-        self.canvas.unbind_all(
-            "<Button-4>"
-        )
+            combined = []
+            for i, doc in enumerate(valid_records):
+                # Percentile-normalized model scores keep the combined risk interpretable.
+                rank = float((np.argsort(np.argsort(sklearn_scores))[i] + 1) / len(sklearn_scores))
+                if torch_scores is not None:
+                    trank = float((np.argsort(np.argsort(torch_scores))[i] + 1) / len(torch_scores))
+                    risk = 100.0 * (0.65 * rank + 0.35 * trank)
+                    flagged = bool(sklearn_flags[i] or torch_flags[i])
+                    model_name = "Isolation Forest + PyTorch AE"
+                else:
+                    risk = 100.0 * rank
+                    flagged = bool(sklearn_flags[i])
+                    model_name = "Isolation Forest"
+                combined.append((risk, flagged, doc, model_name))
 
-        self.canvas.unbind_all(
-            "<Button-5>"
-        )
+            combined.sort(key=lambda item: item[0], reverse=True)
+            tree = self.ml_tree
+            tree.delete(*tree.get_children())
+            for risk, flagged, doc, model_name in combined[:100]:
+                tree.insert("", "end", values=(
+                    doc.get("name", "Unknown"),
+                    doc.get("course", ""),
+                    doc.get("semester", ""),
+                    f"{risk:.1f}/100",
+                    ("REVIEW" if flagged else "Normal") + f" • {model_name}"
+                ))
+            flagged_count = sum(1 for _, flag, _, _ in combined if flag)
+            torch_status = "PyTorch autoencoder included" if torch_scores is not None else (
+                "PyTorch unavailable/not enough data; sklearn-only result")
+            self.ml_summary.configure(
+                text=(f"Records analysed: {len(valid_records)}    •    "
+                      f"Numeric features: {', '.join(feature_names)}\n"
+                      f"Flagged for human review: {flagged_count}    •    "
+                      f"Models: {torch_status}\n"
+                      "Risk score is a relative anomaly ranking, not a judgment of student performance.")
+            )
+            self._log(f"ML analysis completed for {len(valid_records)} student records; "
+                      f"{flagged_count} flagged for review.")
+        except Exception as exc:
+            traceback.print_exc()
+            messagebox.showerror("ML analysis failed", str(exc))
 
-        self.canvas.unbind_all(
-            "<Prior>"
-        )
+    # -------------------------------- session --------------------------------
+    def show_tab(self, key):
+        """Called by dashboard on logout (ignores unknown names)."""
+        try:
+            self.deiconify()
+            if key in self.pages:
+                self.show_page(key)
+        except Exception:
+            pass
 
-        self.canvas.unbind_all(
-            "<Next>"
-        )
+    def _on_close(self):
+        self.alive = False
+        try:
+            self.db.close()
+        finally:
+            self.destroy()
 
-        self.canvas.unbind_all(
-            "<Home>"
-        )
-
-        self.canvas.unbind_all(
-            "<End>"
-        )
-
-
-# =========================================================
-# FUNCTION CALLED FROM MAIN.PY
-# =========================================================
-
-def open_admin_panel(
-    parent,
-    session=None
-):
-
-    StudentManagementApp(
-        parent,
-        session
-    )
+    def _signout(self):
+        if not messagebox.askyesno("Sign out", "Sign out of the console?"):
+            return
+        self._on_close()
 
 
-# =========================================================
-# DIRECT RUN
-# =========================================================
+def main():
+    try:
+        AdminPanel().mainloop()
+    except Exception:
+        traceback.print_exc()
+        try:
+            messagebox.showerror("Admin panel", traceback.format_exc()[-1500:])
+        except Exception:
+            pass
+
 
 if __name__ == "__main__":
-
-    root = tk.Tk()
-
-    root.title(
-        "Student Management System"
-    )
-
-    root.geometry(
-        "1500x900"
-    )
-
-    root.minsize(
-        1000,
-        650
-    )
-
-    StudentManagementApp(
-        root
-    )
-
-    root.mainloop()
+    main()

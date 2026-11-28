@@ -11,7 +11,7 @@ import traceback
 import tkinter as tk
 from tkinter import messagebox
 
-# ----------------------------- Optional dependencies -------------------------
+
 try:
     from PIL import Image, ImageTk, ImageOps, ImageEnhance
     PIL_OK = True
@@ -25,7 +25,7 @@ except Exception:
     MONGO_OK = False
 
 
-# -------------------------------- Configuration -------------------------------
+
 COLLEGE_NAME = "GOVERNMENT POLYTECHNIC CHAPRA"
 COLLEGE_TAGLINE = "A smarter, safer campus experience"
 
@@ -34,25 +34,25 @@ MONGO_URI = "mongodb://localhost:27017"
 DATABASE_NAME = "student_management"
 USERS_COLLECTION = "users"
 
-# ---------------------------------------------------------------- COLLEGE LOGO
-# >>> Replace this DEMO link with your college logo (local path OR image URL).
-#     Examples:
-#         LOGO_PATH = r"C:\college\gpr_logo.jpg"
-#         LOGO_PATH = "https://your-site.edu/logo.png"
-#     Leave blank ("") to keep the built-in ✦ mark.
+
+
+
+
+
+
 LOGO_PATH = "C:\\Users\\kanur\\PycharmProjects\\VWSP\\PythonProject\\images\\gpc.png"
 
-# A single student/campus-themed photograph. If internet/Pillow is unavailable,
-# the app uses ONLY the gradient fallback (never both backgrounds together).
+
+
 BACKGROUND_URL = (
     "https://images.unsplash.com/photo-1523240795612-9a054b0db644"
     "?auto=format&fit=crop&w=2200&q=85"
 )
 
-# Palette
-NAVY = "#101B32"
-NAVY_2 = "#172744"
-NAVY_3 = "#203657"
+
+NAVY = "#0B1730"
+NAVY_2 = "#122541"
+NAVY_3 = "#1B385C"
 PANEL = "#FFFFFF"
 PANEL_SOFT = "#F5F8FC"
 INK = "#17243A"
@@ -70,12 +70,13 @@ EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 MOBILE_RE = re.compile(r"^[6-9]\d{9}$")
 ID_RE = re.compile(r"^[A-Za-z0-9]{4,20}$")
 PASSWORD_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,}$")
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{4,32}$")
 CATEGORIES = ("student", "teacher", "principal")
 
 SCROLL_SEQUENCES = ("<MouseWheel>", "<Button-4>", "<Button-5>", "<Shift-MouseWheel>")
 
 
-# --------------------------------- Data helpers --------------------------------
+
 def hash_password(password, salt=None):
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac(
@@ -95,6 +96,16 @@ def verify_password(password, record):
         return False
 
 
+def make_username(email, collection):
+    base = re.sub(r"[^a-zA-Z0-9._-]", "", email.split("@", 1)[0]).lower()
+    base = (base[:22] or "student")
+    for _ in range(30):
+        candidate = f"{base}_{secrets.randbelow(90000) + 10000}"
+        if not collection.find_one({"username": candidate}):
+            return candidate
+    raise RuntimeError("Could not generate a unique username. Please try again.")
+
+
 def valid_date(value):
     for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
         try:
@@ -106,7 +117,6 @@ def valid_date(value):
 
 
 class MemoryUsers:
-    """Small Mongo-like fallback used only when MongoDB is unavailable."""
     def __init__(self):
         self.records = {}
 
@@ -136,19 +146,28 @@ class MemoryUsers:
 
 
 def connect_database():
-    if MONGO_OK:
+    if not MONGO_OK:
+        return MemoryUsers(), False, None
+    client = None
+    try:
+        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=4000)
+        client.admin.command("ping")
+        collection = client[DATABASE_NAME][USERS_COLLECTION]
         try:
-            client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=1800)
-            client.admin.command("ping")
-            collection = client[DATABASE_NAME][USERS_COLLECTION]
-            collection.create_index("email", unique=True)
-            return collection, True, client
+            collection.create_index("emai", unique=True, name="email_unique_auth")
         except Exception:
             pass
-    return MemoryUsers(), False, None
+        return collection, True, client
+    except Exception:
+        try:
+            if client is not None:
+                client.close()
+        except Exception:
+            pass
+        return MemoryUsers(), False, None
 
 
-# -------------------------------- Main application -----------------------------
+
 class StudentPortal(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -158,6 +177,10 @@ class StudentPortal(tk.Tk):
         self.configure(bg=NAVY)
 
         self.db, self.mongo_online, self.mongo_client = connect_database()
+        self.auth_busy = False
+        self.dashboard_opening = False
+        self.login_failures = {}
+        self.login_locked_until = {}
         self.background_source = None
         self.background_photo = None
         self.logo_photo = None
@@ -168,20 +191,24 @@ class StudentPortal(tk.Tk):
         self.status_text = tk.StringVar(value="")
         self.status_kind = "info"
         self._resize_job = None
-        self._scroll_acc = 0.0          # trackpad delta accumulator
+        self._scroll_acc = 0.0
 
         self._build_background()
         self._build_interface()
-        self._seed_demo_user()
+        if not self.mongo_online:
+            self._set_status(
+                "DATABASE OFFLINE: MongoDB is unavailable. Accounts cannot be saved or authenticated until the database is running.",
+                "error"
+            )
         self._update_clock()
         self.protocol("WM_DELETE_WINDOW", self._close)
 
-        # Fetch image away from the Tk main thread. The canvas starts with one
-        # fallback background and is replaced atomically after a successful fetch.
+
+
         if PIL_OK:
             threading.Thread(target=self._download_background, daemon=True).start()
 
-    # ------------------------------- Background --------------------------------
+
     def _build_background(self):
         self.bg_canvas = tk.Canvas(
             self, bg=NAVY, highlightthickness=0, bd=0
@@ -201,7 +228,7 @@ class StudentPortal(tk.Tk):
             if self.alive:
                 self.after(0, self._render_background)
         except Exception:
-            # Keep the existing gradient. No second background layer is created.
+
             self.background_source = None
 
     def _on_resize(self, _event=None):
@@ -223,7 +250,7 @@ class StudentPortal(tk.Tk):
         height = max(1, self.winfo_height())
         canvas = self.bg_canvas
 
-        # Delete the previous background completely before drawing a new one.
+
         canvas.delete("background")
         self.background_photo = None
 
@@ -239,7 +266,7 @@ class StudentPortal(tk.Tk):
                     0, 0, image=self.background_photo, anchor="nw",
                     tags="background"
                 )
-                # One translucent dark overlay over the photograph.
+
                 canvas.create_rectangle(
                     0, 0, width, height, fill="#0B1730",
                     stipple="gray50", outline="", tags="background"
@@ -253,7 +280,7 @@ class StudentPortal(tk.Tk):
         canvas.tag_lower("background")
 
     def _draw_gradient(self, width, height):
-        # A clean, single fallback background (not layered with an online image).
+
         c = self.bg_canvas
         top = (12, 25, 49)
         bottom = (30, 59, 91)
@@ -271,226 +298,314 @@ class StudentPortal(tk.Tk):
                 fill=color, outline=color, tags="background"
             )
 
-    # -------------------------------- Main layout -------------------------------
+
     def _build_interface(self):
-        self.shell = tk.Frame(self, bg=NAVY, bd=0)
-        self.shell.place(relx=0.5, rely=0.5, anchor="center",
-                         relwidth=0.94, relheight=0.92)
+        # Main application shell
+        self.shell = tk.Frame(
+            self, bg="#0B1730",
+            highlightthickness=1, highlightbackground="#526985"
+        )
+        self.shell.place(
+            relx=0.5, rely=0.5, anchor="center",
+            relwidth=0.95, relheight=0.94
+        )
 
-        self.header = tk.Frame(self.shell, bg="#14243D",
-                               highlightthickness=1,
-                               highlightbackground="#40516B")
-        self.header.pack(fill="x", pady=(0, 18))
+        # Slim accent line
+        tk.Frame(self.shell, bg="#35D0C8", height=4).pack(fill="x")
 
-        left_header = tk.Frame(self.header, bg="#14243D")
-        left_header.pack(side="left", padx=22, pady=14)
+        self.header = tk.Frame(
+            self.shell, bg="#122541",
+            highlightthickness=1, highlightbackground="#2C4566"
+        )
+        self.header.pack(fill="x", padx=16, pady=(14, 14))
 
-        # ---- COLLEGE LOGO SLOT (loads LOGO_PATH, falls back to ✦) ----
-        self.logo_area = tk.Frame(left_header, bg="#FFFFFF",
-                                  width=52, height=52)
-        self.logo_area.pack(side="left", padx=(0, 13))
+        left_header = tk.Frame(self.header, bg="#122541")
+        left_header.pack(side="left", padx=20, pady=13)
+
+        self.logo_area = tk.Frame(
+            left_header, bg="#FFFFFF", width=58, height=58
+        )
+        self.logo_area.pack(side="left", padx=(0, 14))
         self.logo_area.pack_propagate(False)
+
         self.logo_label = tk.Label(
-            self.logo_area, text="✦", bg="#FFFFFF", fg=ACCENT,
-            font=("Segoe UI Symbol", 25, "bold")
+            self.logo_area, text="GPC", bg="#FFFFFF", fg="#2563EB",
+            font=("Segoe UI", 17, "bold")
         )
         self.logo_label.pack(expand=True, fill="both")
         self._load_logo()
 
-        title_box = tk.Frame(left_header, bg="#14243D")
+        title_box = tk.Frame(left_header, bg="#122541")
         title_box.pack(side="left")
+
         tk.Label(
             title_box, text=COLLEGE_NAME,
-            bg="#14243D", fg=WHITE, font=("Segoe UI", 15, "bold")
+            bg="#122541", fg="#FFFFFF",
+            font=("Segoe UI", 15, "bold")
         ).pack(anchor="w")
+
         tk.Label(
             title_box, text="STUDENT MANAGEMENT SYSTEM",
-            bg="#14243D", fg="#8EDBD4", font=("Segoe UI", 9, "bold")
+            bg="#122541", fg="#50DED5",
+            font=("Segoe UI", 9, "bold")
         ).pack(anchor="w", pady=(3, 0))
+
         tk.Label(
             title_box, text=COLLEGE_TAGLINE,
-            bg="#14243D", fg="#B8C7DA", font=("Segoe UI", 8)
-        ).pack(anchor="w", pady=(2, 0))
+            bg="#122541", fg="#AFC2D9",
+            font=("Segoe UI", 8)
+        ).pack(anchor="w", pady=(3, 0))
 
-        right_header = tk.Frame(self.header, bg="#14243D")
-        right_header.pack(side="right", padx=22, pady=12)
+        right_header = tk.Frame(self.header, bg="#122541")
+        right_header.pack(side="right", padx=20, pady=12)
+
+        tk.Label(
+            right_header, text="CAMPUS PORTAL",
+            bg="#122541", fg="#8CA6C2",
+            font=("Segoe UI", 8, "bold")
+        ).pack(anchor="e")
+
         self.clock_label = tk.Label(
-            right_header, text="", bg="#14243D", fg="#8EDBD4",
-            font=("Consolas", 13, "bold")
+            right_header, text="", bg="#122541", fg="#65E4DC",
+            font=("Consolas", 15, "bold")
         )
-        self.clock_label.pack(anchor="e")
+        self.clock_label.pack(anchor="e", pady=(3, 0))
+
         self.date_label = tk.Label(
-            right_header, text="", bg="#14243D", fg="#B8C7DA",
+            right_header, text="", bg="#122541", fg="#B8C7DA",
             font=("Segoe UI", 8)
         )
         self.date_label.pack(anchor="e", pady=(2, 0))
 
-        self.content = tk.Frame(self.shell, bg=NAVY, bd=0)
-        self.content.pack(fill="both", expand=True)
+        # Two-column content area
+        self.content = tk.Frame(self.shell, bg="#0B1730", bd=0)
+        self.content.pack(fill="both", expand=True, padx=16)
 
-        # Left welcome panel
         self.welcome = tk.Frame(
-            self.content, bg="#172A48", width=430,
-            highlightthickness=1, highlightbackground="#40516B"
+            self.content, bg="#142B4B", width=430,
+            highlightthickness=1, highlightbackground="#345273"
         )
-        self.welcome.pack(side="left", fill="both", expand=True, padx=(0, 16))
+        self.welcome.pack(
+            side="left", fill="both", expand=True, padx=(0, 15)
+        )
         self.welcome.pack_propagate(False)
 
-        welcome_inner = tk.Frame(self.welcome, bg="#172A48")
-        welcome_inner.pack(fill="both", expand=True, padx=38, pady=34)
+        # Decorative accent at the top of welcome panel
+        tk.Frame(self.welcome, bg="#35D0C8", height=4).pack(fill="x")
+
+        welcome_inner = tk.Frame(self.welcome, bg="#142B4B")
+        welcome_inner.pack(fill="both", expand=True, padx=34, pady=25)
 
         tk.Label(
-            welcome_inner, text=COLLEGE_NAME,
-            bg="#172A48", fg="#8EDBD4", font=("Segoe UI", 9, "bold")
-        ).pack(anchor="w", pady=(18, 10))
+            welcome_inner, text="WELCOME TO YOUR CAMPUS",
+            bg="#142B4B", fg="#62E4DC",
+            font=("Segoe UI", 9, "bold")
+        ).pack(anchor="w", pady=(8, 12))
 
         tk.Label(
             welcome_inner, text="YOUR FUTURE\nSTARTS HERE.",
-            bg="#172A48", fg=WHITE, justify="left",
+            bg="#142B4B", fg="#FFFFFF", justify="left",
             font=("Segoe UI", 31, "bold")
         ).pack(anchor="w", pady=(0, 12))
 
         tk.Label(
             welcome_inner,
-            text="One secure place for students, teachers and campus administrators.",
-            bg="#172A48", fg="#C7D5E7", justify="left",
-            wraplength=340, font=("Segoe UI", 11)
-        ).pack(anchor="w", pady=(0, 26))
+            text="Everything you need to manage your academic journey, all in one secure place.",
+            bg="#142B4B", fg="#C5D5E8", justify="left",
+            wraplength=340, font=("Segoe UI", 10)
+        ).pack(anchor="w", pady=(0, 17))
 
-        self._feature_row(welcome_inner, "01", "Student-first access",
-                          "Keep your academic profile in one place.")
-        self._feature_row(welcome_inner, "02", "Protected accounts",
-                          "Secure password storage and account recovery.")
-        self._feature_row(welcome_inner, "03", "One campus community",
-                          "Dedicated access for students and staff.")
-
-        tk.Frame(welcome_inner, bg="#344967", height=1).pack(
-            fill="x", pady=(24, 14)
+        # Compact feature cards
+        self._feature_row(
+            welcome_inner, "01", "Student-first access",
+            "Academic profile and student services in one place."
         )
+        self._feature_row(
+            welcome_inner, "02", "Protected accounts",
+            "Secure password storage and account recovery."
+        )
+        self._feature_row(
+            welcome_inner, "03", "Connected campus",
+            "Dedicated access for students and institutional staff."
+        )
+
+        tk.Frame(
+            welcome_inner, bg="#385473", height=1
+        ).pack(fill="x", pady=(17, 12))
+
         tk.Label(
             welcome_inner, text="LEARN  •  CONNECT  •  ACHIEVE",
-            bg="#172A48", fg="#8EDBD4",
+            bg="#142B4B", fg="#62E4DC",
             font=("Segoe UI", 9, "bold")
         ).pack(anchor="w")
 
-        # Right authentication card
+        # Authentication card
         self.auth_card = tk.Frame(
-            self.content, bg=PANEL, width=470,
-            highlightthickness=1, highlightbackground="#DCE5F0"
+            self.content, bg="#FFFFFF", width=475,
+            highlightthickness=1, highlightbackground="#DCE6F2"
         )
-        self.auth_card.pack(side="right", fill="both", padx=(0, 0))
+        self.auth_card.pack(side="right", fill="both")
         self.auth_card.pack_propagate(False)
 
+        tk.Frame(self.auth_card, bg="#2563EB", height=5).pack(fill="x")
         self._build_auth_card()
 
         self.footer = tk.Label(
             self.shell,
-            text="© {} {}     •     Student Management System".format(
+            text="© {} {}     •     SECURE STUDENT PORTAL".format(
                 datetime.datetime.now().year, COLLEGE_NAME.title()
             ),
-            bg="#14243D", fg="#C1CDDC", font=("Segoe UI", 8), pady=9
+            bg="#122541", fg="#B9C9DC",
+            font=("Segoe UI", 8, "bold"), pady=9
         )
-        self.footer.pack(fill="x", pady=(14, 0))
+        self.footer.pack(fill="x", padx=16, pady=(12, 12))
 
         self._adapt_layout()
 
     def _feature_row(self, parent, number, heading, detail):
-        row = tk.Frame(parent, bg="#172A48")
-        row.pack(fill="x", pady=9)
-        number_box = tk.Frame(row, bg="#24466D", width=38, height=38)
-        number_box.pack(side="left", padx=(0, 13))
+        row = tk.Frame(
+            parent, bg="#1B385C",
+            highlightthickness=1, highlightbackground="#294969"
+        )
+        row.pack(fill="x", pady=6)
+
+        number_box = tk.Frame(
+            row, bg="#24517B", width=42, height=42
+        )
+        number_box.pack(side="left", padx=10, pady=9)
         number_box.pack_propagate(False)
+
         tk.Label(
-            number_box, text=number, bg="#24466D", fg="#8EDBD4",
-            font=("Segoe UI", 9, "bold")
+            number_box, text=number, bg="#24517B", fg="#70E7DF",
+            font=("Segoe UI", 10, "bold")
         ).pack(expand=True)
-        text_box = tk.Frame(row, bg="#172A48")
-        text_box.pack(side="left", fill="x", expand=True)
+
+        text_box = tk.Frame(row, bg="#1B385C")
+        text_box.pack(
+            side="left", fill="x", expand=True, padx=(2, 10), pady=8
+        )
+
         tk.Label(
-            text_box, text=heading, bg="#172A48", fg=WHITE,
+            text_box, text=heading, bg="#1B385C", fg="#FFFFFF",
             font=("Segoe UI", 10, "bold")
         ).pack(anchor="w")
+
         tk.Label(
-            text_box, text=detail, bg="#172A48", fg="#B7C8DC",
-            font=("Segoe UI", 8), wraplength=290, justify="left"
+            text_box, text=detail, bg="#1B385C", fg="#B7C9DE",
+            font=("Segoe UI", 8), wraplength=285, justify="left"
         ).pack(anchor="w", pady=(3, 0))
 
     def _adapt_layout(self):
         width = self.winfo_width()
+
         if width < 980:
             if self.welcome.winfo_manager():
                 self.welcome.pack_forget()
+
             if not self.auth_card.winfo_manager():
-                self.auth_card.pack(side="left", fill="both", expand=True)
+                self.auth_card.pack(
+                    side="left", fill="both", expand=True
+                )
+
             self.auth_card.configure(width=600)
         else:
             if not self.welcome.winfo_manager():
-                self.welcome.pack(side="left", fill="both", expand=True,
-                                  padx=(0, 16), before=self.auth_card)
-            self.auth_card.configure(width=470)
+                self.welcome.pack(
+                    side="left", fill="both", expand=True,
+                    padx=(0, 15), before=self.auth_card
+                )
+            self.auth_card.configure(width=475)
 
     def _build_auth_card(self):
-        heading = tk.Frame(self.auth_card, bg=PANEL)
-        heading.pack(fill="x", padx=27, pady=(24, 3))
+        heading = tk.Frame(self.auth_card, bg="#FFFFFF")
+        heading.pack(fill="x", padx=29, pady=(23, 2))
+
         tk.Label(
             heading, text="Welcome back",
-            bg=PANEL, fg=INK, font=("Segoe UI", 21, "bold")
+            bg="#FFFFFF", fg="#14243A",
+            font=("Segoe UI", 22, "bold")
         ).pack(anchor="w")
+
         tk.Label(
-            heading, text="Sign in or create your campus account below.",
-            bg=PANEL, fg=MUTED, font=("Segoe UI", 9)
+            heading,
+            text="Access your student and campus account.",
+            bg="#FFFFFF", fg="#718096",
+            font=("Segoe UI", 9)
         ).pack(anchor="w", pady=(4, 0))
 
-        self.tabs_frame = tk.Frame(self.auth_card, bg="#EDF2F8")
-        self.tabs_frame.pack(fill="x", padx=25, pady=(18, 12))
+        # Tab navigation
+        self.tabs_frame = tk.Frame(
+            self.auth_card, bg="#F0F4FA",
+            highlightthickness=1, highlightbackground="#E1E8F1"
+        )
+        self.tabs_frame.pack(fill="x", padx=25, pady=(18, 10))
+
         self.tab_buttons = {}
         tabs = [
             ("signin", "Sign in"),
             ("signup", "Register"),
-            ("change", "Change password"),
-            ("forgot", "Forgot password"),
+            ("change", "Change"),
+            ("forgot", "Forgot"),
         ]
+
         for key, label in tabs:
             button = tk.Button(
                 self.tabs_frame, text=label,
                 command=lambda selected=key: self.show_tab(selected),
                 bd=0, relief="flat", cursor="hand2",
-                bg="#EDF2F8", fg=MUTED,
-                activebackground="#EDF2F8", activeforeground=ACCENT,
-                font=("Segoe UI", 8, "bold"), padx=5, pady=11
+                bg="#F0F4FA", fg="#718096",
+                activebackground="#FFFFFF",
+                activeforeground="#2563EB",
+                font=("Segoe UI", 8, "bold"),
+                padx=4, pady=12
             )
-            button.pack(side="left", expand=True, fill="x")
+            button.pack(side="left", expand=True, fill="x", padx=2, pady=2)
             self.tab_buttons[key] = button
 
-        self.active_line = tk.Frame(self.auth_card, bg=ACCENT, height=3)
+        self.active_line = tk.Frame(
+            self.auth_card, bg="#2563EB", height=2
+        )
         self.active_line.pack(fill="x", padx=25)
 
-        # Scrollable form region: long registration forms never run off-screen.
+        # Scrollable form area
+        form_area = tk.Frame(self.auth_card, bg="#FFFFFF")
+        form_area.pack(fill="both", expand=True, padx=(25, 12), pady=(8, 0))
+
         self.form_canvas = tk.Canvas(
-            self.auth_card, bg=PANEL, highlightthickness=0, bd=0
+            form_area, bg="#FFFFFF", highlightthickness=0, bd=0
         )
         self.form_scroll = tk.Scrollbar(
-            self.auth_card, orient="vertical", command=self.form_canvas.yview
+            form_area, orient="vertical", command=self.form_canvas.yview,
+            relief="flat", bd=0, width=8
         )
-        self.form_canvas.configure(yscrollcommand=self.form_scroll.set)
-        self.form_canvas.pack(side="left", fill="both", expand=True,
-                              padx=(25, 0), pady=(8, 0))
-        self.form_scroll.pack(side="right", fill="y", padx=(0, 13), pady=(8, 0))
+        self.form_canvas.configure(
+            yscrollcommand=self.form_scroll.set
+        )
+        self.form_canvas.pack(side="left", fill="both", expand=True)
+        self.form_scroll.pack(side="right", fill="y", padx=(5, 0))
 
-        self.form_frame = tk.Frame(self.form_canvas, bg=PANEL)
+        self.form_frame = tk.Frame(self.form_canvas, bg="#FFFFFF")
         self.form_window = self.form_canvas.create_window(
             (0, 0), window=self.form_frame, anchor="nw"
         )
-        self.form_frame.bind("<Configure>", self._update_scroll_region)
-        self.form_canvas.bind("<Configure>", self._resize_form_width)
+        self.form_frame.bind(
+            "<Configure>", self._update_scroll_region
+        )
+        self.form_canvas.bind(
+            "<Configure>", self._resize_form_width
+        )
         self._bind_scroll()
 
         self.status_label = tk.Label(
             self.auth_card, textvariable=self.status_text,
-            bg=PANEL, fg=MUTED, font=("Segoe UI", 8),
-            justify="left", anchor="w", wraplength=420
+            bg="#F7F9FC", fg="#718096",
+            font=("Segoe UI", 8, "bold"),
+            justify="left", anchor="w", wraplength=420,
+            padx=12, pady=9
         )
-        self.status_label.pack(side="bottom", fill="x", padx=27, pady=(5, 18))
+        self.status_label.pack(
+            side="bottom", fill="x", padx=25, pady=(6, 15)
+        )
 
         self.show_tab("signin")
 
@@ -500,9 +615,9 @@ class StudentPortal(tk.Tk):
     def _resize_form_width(self, event):
         self.form_canvas.itemconfigure(self.form_window, width=event.width)
 
-    # --------------------------- Scroll (mouse + trackpad) -----------------------
+
     def _bind_scroll(self):
-        # MouseWheel covers Windows/macOS; Button-4/5 cover Linux/X11 trackpads.
+
         for sequence in SCROLL_SEQUENCES:
             try:
                 self.form_canvas.bind_all(sequence, self._on_scroll)
@@ -515,15 +630,15 @@ class StudentPortal(tk.Tk):
                 return "break"
 
             num = getattr(event, "num", None)
-            if num == 4:                      # Linux scroll up
+            if num == 4:
                 step = -1
-            elif num == 5:                    # Linux scroll down
+            elif num == 5:
                 step = 1
             else:
                 delta = getattr(event, "delta", 0)
                 if delta == 0:
                     return "break"
-                # Trackpads send many tiny deltas; accumulate, then step.
+
                 self._scroll_acc += delta
                 threshold = 120 if abs(delta) >= 120 else 40
                 step = int(-self._scroll_acc / threshold)
@@ -541,7 +656,7 @@ class StudentPortal(tk.Tk):
         except Exception:
             return "break"
 
-    # ---------------------------------- Logo load --------------------------------
+
     def _load_logo(self):
         """Load LOGO_PATH from a local file or a URL (fallback = ✦ mark)."""
         if not LOGO_PATH or not PIL_OK:
@@ -576,7 +691,7 @@ class StudentPortal(tk.Tk):
         except Exception:
             pass
 
-    # -------------------------------- Form widgets ------------------------------
+
     def _clear_form(self):
         for child in self.form_frame.winfo_children():
             child.destroy()
@@ -585,31 +700,67 @@ class StudentPortal(tk.Tk):
         self.form_canvas.yview_moveto(0)
 
     def _field(self, key, label, placeholder="", secret=False):
-        group = tk.Frame(self.form_frame, bg=PANEL)
-        group.pack(fill="x", pady=(5, 4))
+        group = tk.Frame(self.form_frame, bg="#FFFFFF")
+        group.pack(fill="x", pady=(8, 5))
+
         tk.Label(
-            group, text=label.upper(), bg=PANEL, fg="#53647A",
+            group, text=label.upper(),
+            bg="#FFFFFF", fg="#52647B",
             font=("Segoe UI", 8, "bold")
-        ).pack(anchor="w", pady=(0, 5))
+        ).pack(anchor="w", pady=(0, 6))
 
         entry_shell = tk.Frame(
-            group, bg=FIELD, highlightthickness=1,
-            highlightbackground=BORDER, highlightcolor=ACCENT
+            group, bg="#F7F9FC",
+            highlightthickness=1,
+            highlightbackground="#DCE5F0",
+            highlightcolor="#2563EB"
         )
         entry_shell.pack(fill="x")
+
         entry = tk.Entry(
-            entry_shell, bg=FIELD, fg=INK, insertbackground=INK,
-            relief="flat", bd=0, font=("Segoe UI", 10),
+            entry_shell, bg="#F7F9FC", fg="#17243A",
+            insertbackground="#2563EB",
+            relief="flat", bd=0,
+            font=("Segoe UI", 10),
             show="●" if secret else ""
         )
-        entry.pack(fill="x", padx=12, pady=10, ipady=2)
+        entry.pack(fill="x", padx=14, pady=12, ipady=2)
+
+        def focus_in(_event=None, shell=entry_shell):
+            shell.configure(
+                bg="#EFF6FF",
+                highlightbackground="#2563EB",
+                highlightcolor="#2563EB"
+            )
+            entry.configure(bg="#EFF6FF")
+
+        def focus_out(_event=None, shell=entry_shell):
+            shell.configure(
+                bg="#F7F9FC",
+                highlightbackground="#DCE5F0",
+                highlightcolor="#2563EB"
+            )
+            entry.configure(bg="#F7F9FC")
+
+        entry.bind("<FocusIn>", focus_in)
+        entry.bind("<FocusOut>", focus_out)
+
         if placeholder:
             entry.insert(0, placeholder)
             entry.configure(fg="#9AA7B8")
-            entry.bind("<FocusIn>", lambda _e, w=entry, p=placeholder:
-                       self._remove_placeholder(w, p))
-            entry.bind("<FocusOut>", lambda _e, w=entry, p=placeholder:
-                       self._restore_placeholder(w, p))
+            entry.bind(
+                "<FocusIn>",
+                lambda _e, w=entry, p=placeholder:
+                self._remove_placeholder(w, p),
+                add="+"
+            )
+            entry.bind(
+                "<FocusOut>",
+                lambda _e, w=entry, p=placeholder:
+                self._restore_placeholder(w, p),
+                add="+"
+            )
+
         self.form_vars[key] = entry
         return entry
 
@@ -635,42 +786,76 @@ class StudentPortal(tk.Tk):
     def _primary_button(self, label, callback):
         button = tk.Button(
             self.form_frame, text=label, command=callback,
-            bg=ACCENT, fg=WHITE, activebackground=ACCENT_HOVER,
-            activeforeground=WHITE, bd=0, relief="flat",
-            cursor="hand2", font=("Segoe UI", 10, "bold"),
-            pady=12
+            bg="#2563EB", fg="#FFFFFF",
+            activebackground="#1D4ED8",
+            activeforeground="#FFFFFF",
+            bd=0, relief="flat", cursor="hand2",
+            font=("Segoe UI", 10, "bold"),
+            pady=13
         )
-        button.pack(fill="x", pady=(17, 8))
-        button.bind("<Enter>", lambda _e: button.configure(bg=ACCENT_HOVER))
-        button.bind("<Leave>", lambda _e: button.configure(bg=ACCENT))
+        button.pack(fill="x", pady=(19, 10))
+
+        button.bind(
+            "<Enter>",
+            lambda _e: button.configure(bg="#1D4ED8")
+        )
+        button.bind(
+            "<Leave>",
+            lambda _e: button.configure(bg="#2563EB")
+        )
+        button.bind(
+            "<ButtonPress-1>",
+            lambda _e: button.configure(bg="#1746A2")
+        )
+        button.bind(
+            "<ButtonRelease-1>",
+            lambda _e: button.configure(bg="#1D4ED8")
+        )
 
     def _set_status(self, message="", kind="info"):
         self.status_text.set(message)
+        colors = {
+            "error": "#C62828",
+            "success": "#168653",
+            "info": "#718096"
+        }
         self.status_label.configure(
-            fg={"error": DANGER, "success": SUCCESS}.get(kind, MUTED)
+            fg=colors.get(kind, "#718096"),
+            bg="#FFF4F3" if kind == "error"
+               else "#EFFAF4" if kind == "success"
+               else "#F7F9FC"
         )
 
     def show_tab(self, key):
         self.current_tab = key
+
         for name, button in self.tab_buttons.items():
             selected = name == key
             button.configure(
-                bg="#FFFFFF" if selected else "#EDF2F8",
-                fg=ACCENT if selected else MUTED
+                bg="#FFFFFF" if selected else "#F0F4FA",
+                fg="#2563EB" if selected else "#718096",
+                activebackground="#FFFFFF" if selected else "#F0F4FA",
+                activeforeground="#2563EB"
             )
+
         self._set_status("")
         self._clear_form()
+
         forms = {
             "signin": self._form_signin,
             "signup": self._form_signup,
             "change": self._form_change,
             "forgot": self._form_forgot,
         }
+
         try:
             forms[key]()
+            self.form_canvas.yview_moveto(0)
         except Exception as exc:
             traceback.print_exc()
-            self._set_status("Could not open this form: " + str(exc), "error")
+            self._set_status(
+                "Could not open this form: " + str(exc), "error"
+            )
 
     def _form_signin(self):
         self._field("email", "Email address", "name@example.com")
@@ -718,7 +903,7 @@ class StudentPortal(tk.Tk):
         self._primary_button("CREATE ACCOUNT  →", self._sign_up)
         tk.Label(
             self.form_frame,
-            text="Password must contain at least 8 characters, a letter and a number.",
+            text="A unique username is generated automatically. Password: 8+ characters, with a letter and a number.",
             bg=PANEL, fg=MUTED, wraplength=390, justify="left",
             font=("Segoe UI", 8)
         ).pack(anchor="w", pady=(0, 12))
@@ -728,7 +913,7 @@ class StudentPortal(tk.Tk):
             return
         for child in self.category_fields.winfo_children():
             child.destroy()
-        # Keep the dynamic fields inside their own frame, not mixed with others.
+
         self.category_vars = {}
         category = self.category.get()
         fields = []
@@ -738,19 +923,19 @@ class StudentPortal(tk.Tk):
         elif category == "teacher":
             fields = [("department", "Department"), ("subject", "Subject")]
         for key, label in fields:
-            group = tk.Frame(self.category_fields, bg=PANEL)
+            group = tk.Frame(self.category_fields, bg="#FFFFFF")
             group.pack(fill="x", pady=(5, 4))
             tk.Label(
-                group, text=label.upper(), bg=PANEL, fg="#53647A",
+                group, text=label.upper(), bg="#FFFFFF", fg="#52647B",
                 font=("Segoe UI", 8, "bold")
             ).pack(anchor="w", pady=(0, 5))
             shell = tk.Frame(
-                group, bg=FIELD, highlightthickness=1,
-                highlightbackground=BORDER
+                group, bg="#F7F9FC", highlightthickness=1,
+                highlightbackground="#DCE5F0"
             )
             shell.pack(fill="x")
             entry = tk.Entry(
-                shell, bg=FIELD, fg=INK, insertbackground=INK,
+                shell, bg="#F7F9FC", fg="#17243A", insertbackground="#2563EB",
                 relief="flat", bd=0, font=("Segoe UI", 10)
             )
             entry.pack(fill="x", padx=12, pady=10, ipady=2)
@@ -776,7 +961,7 @@ class StudentPortal(tk.Tk):
         self._field("confirm", "Confirm new password", secret=True)
         self._primary_button("RESET PASSWORD", self._reset_password)
 
-    # --------------------------------- Validation --------------------------------
+
     def _validate_new_password(self, password, confirm):
         if not PASSWORD_RE.match(password):
             self._set_status(
@@ -789,130 +974,268 @@ class StudentPortal(tk.Tk):
             return False
         return True
 
+    def _database_ready(self):
+        if not self.mongo_online:
+            self._set_status(
+                "MongoDB is not connected. Start MongoDB and restart this application. No account has been saved.",
+                "error"
+            )
+            return False
+        return True
+
+    def _show_success(self, title, message):
+        self._set_status(message, "success")
+        try:
+            messagebox.showinfo(title, message, parent=self)
+        except Exception:
+            pass
+
+    def _show_failure(self, title, message):
+        self._set_status(message, "error")
+        try:
+            messagebox.showerror(title, message, parent=self)
+        except Exception:
+            pass
+
     def _sign_up(self):
+        if self.auth_busy:
+            return self._set_status("Please wait. Your previous request is still being processed.", "error")
+        if not self._database_ready():
+            return
+
+        self.auth_busy = True
         try:
             name = self._value("name")
-            idcard = self._value("idcard")
+            idcard = self._value("idcard").strip()
             gender = self._value("gender").upper()[:1]
             dob = self._value("dob")
-            mobile = self._value("mobile")
-            email = self._value("email").lower()
+            mobile = re.sub(r"\\s+", "", self._value("mobile"))
+            email = self._value("email").lower().strip()
             password = self.form_vars["password"].get()
             confirm = self.form_vars["confirm"].get()
             category = self.category.get()
 
             if len(name) < 2:
-                return self._set_status("Please enter your full name.", "error")
-            if not ID_RE.match(idcard):
-                return self._set_status("ID card must be 4–20 letters or digits.", "error")
+                return self._set_status("Full name is required (at least 2 characters).", "error")
+            if not ID_RE.fullmatch(idcard):
+                return self._set_status("Invalid ID card: use 4–20 letters or digits only.", "error")
             if gender not in ("M", "F", "O"):
-                return self._set_status("Gender must be M, F or O.", "error")
+                return self._set_status("Select a valid gender: M, F or O.", "error")
             if not valid_date(dob):
-                return self._set_status("Enter a valid DOB (YYYY-MM-DD).", "error")
-            if not MOBILE_RE.match(mobile):
-                return self._set_status("Enter a valid 10-digit Indian mobile number.", "error")
-            if not EMAIL_RE.match(email):
-                return self._set_status("Enter a valid email address.", "error")
+                return self._set_status("Invalid date of birth. Use YYYY-MM-DD, DD-MM-YYYY or DD/MM/YYYY.", "error")
+            if not MOBILE_RE.fullmatch(mobile):
+                return self._set_status("Invalid mobile number. Enter a 10-digit Indian mobile number starting with 6–9.", "error")
+            if not EMAIL_RE.fullmatch(email):
+                return self._set_status("Invalid email address. Example: name@example.com.", "error")
+            if category not in CATEGORIES:
+                return self._set_status("Please select a valid account type.", "error")
             if not self._validate_new_password(password, confirm):
                 return
+
             extra = {}
             for key, widget in getattr(self, "category_vars", {}).items():
                 extra[key] = widget.get().strip()
             if any(not value for value in extra.values()):
-                return self._set_status("Complete all fields for this account type.", "error")
-            if self.db.find_one({"email": email}):
-                return self._set_status("This email is already registered. Please sign in.", "error")
+                return self._set_status("Complete every required field for the selected account type.", "error")
 
+            if self.db.find_one({"email": email}):
+                return self._set_status("This email address is already registered. Use Sign in or Forgot password.", "error")
+            if self.db.find_one({"idcard": idcard}):
+                return self._set_status("This ID card number is already linked to another account.", "error")
+            if self.db.find_one({"mobile": mobile}):
+                return self._set_status("This mobile number is already registered.", "error")
+
+            username = make_username(email, self.db)
             document = {
-                "name": name, "idcard": idcard, "gender": gender, "dob": dob,
-                "mobile": mobile, "email": email, "category": category,
+                "name": name,
+                "username": username,
+                "idcard": idcard,
+                "gender": gender,
+                "dob": dob,
+                "mobile": mobile,
+                "email": email,
+                "category": category,
                 "password": hash_password(password),
-                "created_at": datetime.datetime.now().isoformat(),
+                "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "account_status": "active",
                 **extra
             }
-            self.db.insert_one(document)
+
+            result = self.db.insert_one(document)
+            if not getattr(result, "acknowledged", True):
+                return self._set_status("MongoDB did not acknowledge the registration. The account may not have been saved.", "error")
+
             self.show_tab("signin")
             self.form_vars["email"].delete(0, "end")
             self.form_vars["email"].insert(0, email)
-            self._set_status(
-                "Account created successfully. You can now sign in.", "success"
+            success_message = (
+                f"Account created successfully!\n\n"
+                f"Name: {name}\nUsername: {username}\nEmail: {email}\n"
+                f"Account type: {category.title()}\n\n"
+                f"You can now sign in using your email and password."
             )
+            self._show_success("Account created successfully", success_message)
+
         except Exception as exc:
             traceback.print_exc()
-            self._set_status("Registration failed: " + self._safe_error(exc), "error")
+            error_name = type(exc).__name__.lower()
+            error_text = str(exc).lower()
+            if "duplicatekey" in error_name or "e11000" in error_text:
+                detail = "A duplicate value was rejected by MongoDB. Check whether this email, username, ID card or mobile number is already registered. If this continues, inspect the users collection's unique indexes."
+            elif "serverselection" in error_name or "connection" in error_name or "timeout" in error_name:
+                detail = "MongoDB connection failed during registration. Start MongoDB and verify MONGO_URI."
+            else:
+                detail = f"Registration failed ({type(exc).__name__}): {self._safe_error(exc)}"
+            self._show_failure("Account creation failed", detail)
+        finally:
+            self.auth_busy = False
 
     def _sign_in(self):
+        if self.dashboard_opening:
+            return self._set_status("A dashboard session is already being opened. Please wait.", "error")
+        if self.auth_busy:
+            return self._set_status("Please wait. Your previous request is still being processed.", "error")
+        if not self._database_ready():
+            return
+
+        self.auth_busy = True
         try:
-            email = self._value("email").lower()
+            email = self._value("email").lower().strip()
             password = self.form_vars["password"].get()
-            if not EMAIL_RE.match(email) or not password:
-                return self._set_status("Enter a valid email and password.", "error")
+
+            if not EMAIL_RE.fullmatch(email):
+                return self._set_status("Enter a valid registered email address.", "error")
+            if not password:
+                return self._set_status("Password is required.", "error")
+
+            now = datetime.datetime.now().timestamp()
+            locked_until = self.login_locked_until.get(email, 0)
+            if now < locked_until:
+                remaining = max(1, int(locked_until - now))
+                return self._set_status(f"Too many failed attempts. Try again in {remaining} seconds.", "error")
+
             user = self.db.find_one({"email": email})
             if not user:
-                return self._set_status("No account found with this email.", "error")
+                failures = self.login_failures.get(email, 0) + 1
+                self.login_failures[email] = failures
+                if failures >= 5:
+                    self.login_locked_until[email] = now + 60
+                    self.login_failures[email] = 0
+                    return self._set_status("Account temporarily locked after 5 failed attempts. Try again in 60 seconds.", "error")
+                return self._set_status(f"No account found for this email. Check the email or create an account. Attempt {failures}/5.", "error")
+
+            if user.get("account_status", "active") != "active":
+                return self._set_status("This account is disabled. Contact the campus administrator.", "error")
+
             if not verify_password(password, user.get("password", {})):
-                return self._set_status("Incorrect password. Please try again.", "error")
-            self._set_status("Signed in successfully. Opening your dashboard…", "success")
-            self.after(350, lambda account=dict(user): self._open_dashboard(account))
+                failures = self.login_failures.get(email, 0) + 1
+                self.login_failures[email] = failures
+                if failures >= 5:
+                    self.login_locked_until[email] = now + 60
+                    self.login_failures[email] = 0
+                    return self._set_status("Too many incorrect passwords. Login is locked for 60 seconds.", "error")
+                return self._set_status(f"Incorrect password. Please try again. Attempt {failures}/5.", "error")
+
+            self.login_failures.pop(email, None)
+            self.login_locked_until.pop(email, None)
+            account = dict(user)
+            account.pop("password", None)
+            account.pop("_id", None)
+            self.dashboard_opening = True
+            self._set_status("Login successful. Opening your dashboard…", "success")
+            try:
+                messagebox.showinfo(
+                    "Login successful",
+                    f"Welcome, {user.get('name', 'User')}!\nYou are signed in as {user.get('category', 'user').title()}.",
+                    parent=self
+                )
+            except Exception:
+                pass
+            self.after(250, self._open_dashboard, account)
+
         except Exception as exc:
             traceback.print_exc()
-            self._set_status("Sign in failed: " + self._safe_error(exc), "error")
+            error_name = type(exc).__name__.lower()
+            if "serverselection" in error_name or "connection" in error_name or "timeout" in error_name:
+                detail = "Cannot reach MongoDB. Check that the MongoDB service is running."
+            else:
+                detail = f"Login failed ({type(exc).__name__}): {self._safe_error(exc)}"
+            self._show_failure("Sign-in failed", detail)
+        finally:
+            self.auth_busy = False
 
     def _change_password(self):
+        if not self._database_ready():
+            return
         try:
-            email = self._value("email").lower()
+            email = self._value("email").lower().strip()
             old = self.form_vars["old"].get()
             password = self.form_vars["password"].get()
             confirm = self.form_vars["confirm"].get()
+            if not EMAIL_RE.fullmatch(email):
+                return self._set_status("Enter a valid registered email address.", "error")
+            if not old:
+                return self._set_status("Enter your current password.", "error")
             user = self.db.find_one({"email": email})
             if not user:
-                return self._set_status("No account found with this email.", "error")
+                return self._set_status("No account exists with this email address.", "error")
             if not verify_password(old, user.get("password", {})):
-                return self._set_status("Current password is incorrect.", "error")
+                return self._set_status("Current password is incorrect. Nothing was changed.", "error")
             if not self._validate_new_password(password, confirm):
                 return
-            self.db.update_one(
-                {"email": email}, {"$set": {"password": hash_password(password)}}
+            result = self.db.update_one(
+                {"email": email}, {"$set": {"password": hash_password(password),
+                "password_updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}}
             )
+            if getattr(result, "matched_count", 1) == 0:
+                return self._set_status("Account was not found during update. Please retry.", "error")
             self.show_tab("signin")
-            self._set_status("Password updated. Please sign in again.", "success")
+            self._show_success("Password updated", "Your password was updated successfully. Sign in with your new password.")
         except Exception as exc:
             traceback.print_exc()
-            self._set_status("Could not update password: " + self._safe_error(exc), "error")
+            self._show_failure("Password update failed", f"{type(exc).__name__}: {self._safe_error(exc)}")
 
     def _reset_password(self):
+        if not self._database_ready():
+            return
         try:
-            email = self._value("email").lower()
-            idcard = self._value("idcard")
+            email = self._value("email").lower().strip()
+            idcard = self._value("idcard").strip()
             password = self.form_vars["password"].get()
             confirm = self.form_vars["confirm"].get()
+            if not EMAIL_RE.fullmatch(email) or not idcard:
+                return self._set_status("Enter both a valid registered email and your ID card number.", "error")
             user = self.db.find_one({"email": email})
             if not user:
-                return self._set_status("No account found with this email.", "error")
-            if str(user.get("idcard", "")).lower() != idcard.lower():
-                return self._set_status("ID card verification failed.", "error")
+                return self._set_status("No account exists with this email address.", "error")
+            if not secrets.compare_digest(str(user.get("idcard", "")).lower(), idcard.lower()):
+                return self._set_status("ID card verification failed. Check the ID card number.", "error")
             if not self._validate_new_password(password, confirm):
                 return
-            self.db.update_one(
-                {"email": email}, {"$set": {"password": hash_password(password)}}
+            result = self.db.update_one(
+                {"email": email}, {"$set": {"password": hash_password(password),
+                "password_updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}}
             )
+            if getattr(result, "matched_count", 1) == 0:
+                return self._set_status("Account was not found during reset. Please retry.", "error")
             self.show_tab("signin")
-            self._set_status("Password reset successfully. Please sign in.", "success")
+            self._show_success("Password reset successful", "Your password has been reset. You can now sign in.")
         except Exception as exc:
             traceback.print_exc()
-            self._set_status("Password reset failed: " + self._safe_error(exc), "error")
+            self._show_failure("Password reset failed", f"{type(exc).__name__}: {self._safe_error(exc)}")
 
     @staticmethod
     def _safe_error(error):
-        message = str(error).strip()
-        return message[:160] if message else "Please try again."
+        message = str(error).strip().replace("\n", " ")
+        return message[:220] if message else "Please try again."
 
-    # --------------------------------- Dashboard ----------------------------------
+
     def _open_dashboard(self, user):
         try:
             import dashboard
             dashboard.launch(user, app=self)
         except Exception:
+            self.dashboard_opening = False
             traceback.print_exc()
             messagebox.showwarning(
                 "Dashboard unavailable",
@@ -921,24 +1244,6 @@ class StudentPortal(tk.Tk):
                 "it defines launch(user, app=self)."
             )
 
-    # ---------------------------------- Utilities --------------------------------
-    def _seed_demo_user(self):
-        try:
-            if self.db.count_documents({}) == 0:
-                self.db.insert_one({
-                    "name": "Principal Demo",
-                    "idcard": "ADMIN001",
-                    "gender": "M",
-                    "dob": "1980-01-01",
-                    "mobile": "9876543210",
-                    "email": "principal@school.edu",
-                    "category": "principal",
-                    "password": hash_password("Admin@123"),
-                    "created_at": datetime.datetime.now().isoformat()
-                })
-        except Exception:
-            # Duplicate/index/storage errors should not prevent the UI opening.
-            pass
 
     def _update_clock(self):
         if not self.alive:
@@ -966,19 +1271,19 @@ class StudentPortal(tk.Tk):
 
 def main():
     try:
-        # STEP 1: Import splash screen
+
         from splash_screen import splash_screen
 
-        # STEP 2: Create splash window
+
         splash_root = tk.Tk()
 
-        # STEP 3: Display splash screen
+
         splash_screen(splash_root)
 
-        # STEP 4: Wait until splash screen closes
+
         splash_root.mainloop()
 
-        # STEP 5: Launch the actual student management application
+
         app = StudentPortal()
         app.mainloop()
 
